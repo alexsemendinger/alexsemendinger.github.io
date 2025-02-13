@@ -17,15 +17,17 @@ My goal is to motivate the Transformer architecture so that each piece (especial
 
 **[after draft is done: quick outline]**
 
-# A hypothetical language model
+# (Mostly) math-free warmup: a hypothetical language model
 
-Before getting into the computational details of Transformers, it might help to imagine an abstract language model with the same inputs and outputs. 
-* Input: a sequence of tokens $$t_1, \dots, t_n$$. Each token represents roughly one word in a sentence (for more on tokenization, see **[todo: here, link]**).
-* Output: a probability distribution over possible next tokens in the sentence.
+Before getting into the computational details of Transformers, it might help to imagine an abstract language model with the same inputs and outputs. We'll leave the mathematical details completely unspecified for now and just ask what sorts of things we'd expect such a model to do.
 
-For example, if you input "The Empire State Building is in New", a good model would assign nearly 100% probability to "York" and zero probability to every other token. For the input "The state of New", the model should assign some probability to "York", as well as "Jersey", "Mexico", "Zealand", "Hampshire", etc.[^1]
+Here's what we know about our model:
+* Inputs: a sequence of tokens $$t_1, \dots, t_n$$. Each token represents roughly one word in a sentence (for more on tokenization, see **[todo: here, link]**).
+* Outputs: a probability distribution over possible next tokens in the sentence.
 
-[^1]: When I tried this on a real language model, there were also surprisingly high probabilties on "California" (due to a secessionist movement) and "Austin" (New Austin is a fictional state in Red Dead Redemption).
+For example, if you input "The Empire State Building is in New", a good model would assign nearly 100% probability to "York" and zero probability to every other token. On the other hand, for the input "The state of New", the model should assign some probability to "York", but also a lot to "Jersey", "Mexico", "Zealand", "Hampshire", etc.[^1]
+
+[^1]: When I tried this on a real language model, there were also surprisingly high probabilties on "California" (due in part to the *Fallout* video games) and "Austin" (due to *Red Dead Redemption*).
 
 **[ example sentence: “[todo – something with homography?]” ]**
 
@@ -79,6 +81,8 @@ Or more concisely: “What are we moving, and how are we moving it?”
 
 # Transformers
 
+**[todo: instead of or in addition to GPT-2, have running tiny example?]**
+
 Summing up what we've laid out so far, we have a language model that
 * takes tokens $$[t_1, \dots, t_n]$$ as inputs
 * outputs a probability distribution over possible next tokens $$t_{n+1}$$
@@ -116,7 +120,7 @@ Of course, we still haven't left the "processing tokens individually" stage, so 
 
 So far, not very interesting -- I promised you information movement! We'll finally get that with *attention*.
 
-## Attention heads
+## Attention part 1: updating the last token
 
 The simplest model that deserves to be a Transformer has a layer of **attention** in between the embedding and unembedding. As a function, it looks like
 
@@ -133,31 +137,126 @@ Note that this is a **residual connection**: rather than just using the output o
 
 The actual workings of the attention function aren't so bad -- it's just a few matrix multiplications and another application of softmax -- but it's not obvious at first *why* we'd do them. So as we walk through the operations below, remember that attention is providing the "information movement" services that we want: it's computing which information should be moved, and is moving it to the right place.
 
-The presentation here will be slightly nonstandard: for a one-layer attention-only Transformer, all we need to know is how $$x^{(0)}_n$$ is modified by the attention mechanism, so we'll ignore everything else for now.[^3] Later, we'll see that every other token is also modified simultaneously
+The presentation here will be slightly nonstandard: for a one-layer attention-only Transformer, all we need to know is how $$x^{(0)}_n$$ is modified by the attention mechanism.[^3] (We'll see the full version later.)
 
 [^3]: It's also important that we're only generating tokens from the Transformer rather than training it. **[todo: maybe explain]**
 
-Here’s how “Attention is All You Need” summarizes the mechanism:  
-\> “weighted sum of the values etc..”
+Here’s how “Attention is All You Need” summarizes attention:  
+
+> An attention function can be described as mapping a **query** and a set of **key-value pairs** to an **output** .... The output is computed as a **weighted sum of the values**, where the weight assigned to each value is computed by a compatibility function of the query with the corresponding key.
+
+We'll walk through each of these components in turn.
 
 ### Values: What information is being moved?
 
-Our output is going to be a “weighted sum of values.” The values are smaller-dimensional vectors containing the information important to this particular attention head, obtained by projecting token embeddings from the residual stream. We project via a `(d_head, d_model)` matrix called \(W_V\).
+Our output is going to be a “weighted sum of values.”
 
-So for each previous token embedding \(x_i\), we now have a *value vector* \(v_i = W_v x_i\). **[is multiplying on the left ok here? double check at end for consistency]**
+These values (along with the keys and queries) live in a $$d_{\text{head}}$$-dimensional space, where $$d_{\text{head}}$$ is smaller than $$d_{\text{model}}$$ (in GPT-2, it's **[todo -- also is this GPT2-small? be clear elsewhere]**). We compute the values by multiplying the embedding by a $$(d_{\text{head}}, d_{\text{model}})$$ matrix $$W_V$$: that is, $$v_i = W_V x_i^{(0)}$$.
+
+We imagine that the embedding (somehow) represents different pieces of information in different subspaces of the residual stream. We can then think of a projection as picking out a certain subspace to use in this attention head -- that is, picking out certain information from each token to be included in our weighted sum.
+
+Therefore, $$W_V$$ answers the question: "what information are we moving"?
 
 ### Queries and Keys: For each previous token, how important is the information in its value?
 
-Next, we need to compute the weights. These depend on two additional parameter matrices, \(W_Q\) and \(W_K\), each of shape `(d_head, d_model)` (just like \(W_V\)). The current token \(x_n\) is projected to a *query* \(q_n = W_Q x_n\). As with all projections in the attention mechanism, we think of this as extracting some information from the residual stream representation \(x_i\).
+Next, we need to compute the weights. These depend on two additional parameter matrices, $$W_Q$$ and $$W_K$$, each of shape $$(d_\text{head}, d_\text{model})$$ (the same shape as $$W_V$$).
+
+We want these weights to represent how much each previous token should inform our prediction of the next token. To figure this out, we extract some information from $$x^{(0)}_n$$, some other information from $$x^{(0)}_1, \dots, x^{(0)}_n$$, and compute a compatibility function between the two.
+
+Concretely, we compute a **query** from the last token: $$q_n = W_Q x^{(n)}_0$$, as well as **keys** $$k_i = W_K x^{(0)}_i$$ for every token in the context (including $$x^{(0)}_n$$). The compatibility function is the dot product: $$q_n^\top k_i$$. For numerical stability reasons, you additionally divide by the square root of the head dimension, giving us **attention scores** $$s_i = q_n^\top k_i / \sqrt{d_\text{head}}$$. As a vector, we can write this as $$s = K q_n$$, where $$K = [k_1, \dots, k_n]$$ is the $$(d_\text{head}, n)$$ matrix with keys as columns.
+
+The attention scores represent how important each token is to $$x_0^{(n)}$$. But we'd like our weights to each be positive and to sum to 1. We've run into this problem before, and we can use the same solution: softmax! The weights (also called the **attention pattern**) are $$a_i = [\text{softmax}([s_1, \dots, s_n])]_i = e^{s_i} / \sum_{j=1}^n e^{s_j}$$. (The notation $$[v]_i$$ here indicates that we're taking the $$i$$th component of the vector $$v$$.)
+
+Putting this together, we end up with a "result" vector $$r_n = \sum_i a_i v_i$$: a weighted sum of the values, as promised.
+
+We've now answered question 2: "for each token, how important is the information it's offering?"
 
 ### Output: How do we incorporate this information into the representation of the current token?
 
-All that’s left is to project our weighted sum to a vector that’s the same size as \(x_n\). We do this via one last matrix multiplication: \(o_n = W_O x_n\). The matrix \(W_O\) picks out which subspace of the residual stream the data in \(r_n\) will be stored in.
+All that’s left is to project our weighted sum back to the residual stream. We do this via one last matrix multiplication: $$o_n = W_O r_n$$. The matrix $$W_O$$ plays a similar role to $$W_V$$, but in reverse: it picks out which subspace of the residual stream the data in $$r_n$$ will be stored in.
+
+
+## Attention part 2: many queries, many heads
+
+Our first tour through the attention mechanism described how the final token can receive information from all previous tokens in the context. In actual Transformer models, an attention head updates *every* token with information from the tokens preceding it. There are two reasons for this:
+1. In a model with multiple layers of attention, this allows for *composition* of attention heads. An important example of this phenomenon is *induction heads*, which we'll see later.
+2. When *training* a Transformer, the next token is predicted for each token in the sequence simultaneously: the output of ["The", "cat", "ran"] is something like ["big", "is", "quickly"] **[todo: make a better example here]**. So in contrast to the autoregressive setting, the outputs at each position are relevant.
+
+### The attention matrix
+
+We'll end up writing the attention mechanism somewhat differently this time around, but the only real difference is that every token will have its own query vector. The rest is bookkeeping (stacking vectors together into matrices).
+
+Let's write this out: we compute queries, keys, and values for each token:
+
+$$$
+q_i = W_Q x^{(0)}_i, \quad k_i = W_K x^{(0)}_i, \quad v_i = W_V x^{(0)}_i.
+$$$
+
+For each query, we computute attention scores based on all the preceding keys: $$s_{ij} = q_i^\top k_j$$ for $$j \leq i$$. And we turn these into weights by taking the softmax: $$a_{ij} = [\text{softmax}([s_{i1}, s_{i2}, \dots, s_{ii}])]_j$$. 
+
+Finally, we compute our result $$r_i = \sum_{j=1}^i a_{ij} v_j$$ and our output $$o_i = W_O r_i$$, which is added to $$x^{(0)}_i$$ in the residual stream.
+
+**[todo: ok i'm going to push thru for now but there's going to need to be some reckoning with the notation throughout. it's totally unclear that $$r_i$$ and especially $$v_i$$ are vectors while earlier $$a_i$$ is a scalar. i nearly tricked myself into thinking $$\sum_j a_{ij} v_j$$ is a matrix-vector product $$Av$$, but it isn't!]**
+
+The double indices in $$s_{ij}$$ and $$a_{ij}$$ indicate that it might be natural to write these as matrices. And indeed, this is usually how they're presented. It makes sense to write the whole attention pattern out first (setting $$n = 4$$ so it's easy to visualize):
+
+$$$
+A = \begin{bmatrix}
+a_{11} & 0 & 0 & 0 \\
+a_{21} & a_{22} & 0 & 0 \\
+a_{31} & a_{32} & a_{33} & 0 \\
+a_{41} & a_{42} & a_{43} & a_{44}
+\end{bmatrix}
+$$$
+
+In order to write this as a square matrix, we've set $$a_{ij} = 0$$ when $$j > i$$. This allows us to write $$r_i = \sum_{j=1}^n a_{ij} v_j$$ (earlier the sum only ran up to $$j=i$$), since the additional terms don't contribute anything.
+
+It might not be obvious how to write the full matrix of attention *scores*. Again, we've only defined the lower-triangular portion of the matrix. But we want it to have the property that if you take the softmax of each row, you get the corresponding row of $$A$$. That is, we need to pad each row with a value that serves as an identity for softmax, the same way that $$0$$ serves as an identity for addition.
+
+Let's look at a concrete example of softmax to figure out what this should be:
+
+$$$
+\text{softmax}([1, 2]) = \bigg[\frac{e}{e + e^2}, \frac{e^2}{e + e^2}\bigg] \approx
+[0.269, 0.731]
+$$$
+
+We want to pad this with some value $$P$$ so that $$\text{softmax}([1, 2, P]) = [0.269, 0.731, 0]$$. Looking at the softmax formula, this means we want $$e^P = 0$$. The "solution" is to set $$P = -\infty$$. (In practice, you might just use a large negative value.)
+
+So our attention score matrix is
+
+$$$
+S = \begin{bmatrix}
+s_{11} & -\infty & -\infty & -\infty \\
+s_{21} & s_{22} & -\infty & -\infty \\
+s_{31} & s_{32} & s_{33} & -\infty \\
+s_{41} & s_{42} & s_{43} & s_{44}
+\end{bmatrix} = \begin{bmatrix}
+q_1^\top k_1 & -\infty & -\infty & -\infty \\ 
+q_2^\top k_1 & q_2^\top k_2 & -\infty & -\infty \\
+q_3^\top k_1 & q_3^\top k_2 & q_3^\top k_3 & -\infty \\
+q_4^\top k_1 & q_4^\top k_2 & q_4^\top k_3 & q_4^\top k_4
+\end{bmatrix}
+$$$
+
+As promised, if you take the softmax of each row of $$S$$, you get the corresponding row of $$A$$.
+
+
+
+
+
+### The many-headed beast
+
+* tensors
+* big $$W_O$$ matrix
 
 ### Putting it together: QK and OV circuits
 
-We can now write the entire attention operation at once:  
-**[ equation ]**
+**[todo: right now i'm leaning toward putting this later -- maybe too much to do it now?]**
+
+We can now write the entire attention operation at once:
+
+**[todo: the notation above doesn't lend itself well to this. so yeah probably best to hold off until we get to more layers, that's when this is relevant anyway]**
+
 
 Notice that this involves two matrices of shape `(d_model, d_model)`: \(W_{QK} = W_Q^\top W_K\) and \(W_{OV} = W_O W_V\). *Math Framework* refers to these as the “QK circuit” and “OV circuit.” 
 
@@ -165,23 +264,194 @@ Notice that this involves two matrices of shape `(d_model, d_model)`: \(W_{QK} =
 
 This structure limits the expressivity of attention heads in a subtle way. The matrix \(W_{OV}\) determines the read/write operations for all tokens simultaneously: you can’t take some information from one token and different information from the next. Similarly, \(W_{QK}\) works the same for all positions: **[i cant finish this sentence properly]**.
 
-This leads to some bugs in one-layer attention-only Transformers.
+This leads to some bugs in one-layer attention-only Transformers. **[todo: skip trigram bugs?]**
 
 ## MLPs in Transformers
 
-Now that we’ve moved information between tokens, we can do some “per-token processing.” We’ll use the simplest neural network component there is, the MLP.
+Now that we’ve moved information between tokens, we can do some "per-token processing."
 
 **[describe operation]**
 
-Attention-only Transformers are powerful enough to perform some algorithmic tasks **[link]**. But “MLP-only Transformers” would be completely useless: as we saw at the very start, no amount of per-token processing can improve on bigram statistics unless there’s also a way to move information between tokens.
+Attention-only Transformers are powerful enough to perform some algorithmic tasks **[link]**. But “MLP-only Transformers” would be pointless: as we saw at the very start, no amount of per-token processing can improve on bigram statistics unless there’s also a way to move information between tokens.
 
 **[some links to “key-value lookup” and 3b1b video on transformer MLPs if you want more intuition]**
 
-# Stacking Layers
 
-## Two Layer Attention-Only Transformer
 
-* Attention *matrix*
 
-## Induction Heads
+# Stacking layers
+
+## Architecture: the Transformer Block
+
+## Attention head composition
+
+## Induction heads
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Appendix
+
+**[todo: maybe move this to a different post so all this mathjax doesnt have to render]**
+
+I sometimes find it helpful to write out tiny examples to see all the operations at once, in a handful rather than hundreds of dimensions. 
+
+## One-layer toy example
+
+To make this more concrete, let's run through a tiny example of each of these operations. Our dimensions will be the following:
+* $$n = 3$$
+* $$d_\text{vocab} = 10$$
+* $$d_\text{model} = 5$$
+* $$d_\text{head} = 2$$
+* $$d_\text{mlp} = 10$$
+
+We start with one-hot encodings of our tokens:
+
+$$$
+\begin{align*}
+t_1^\top &= [1, 0, 0, 0, 0, 0, 0, 0, 0, 0] \\
+t_2^\top &= [0, 1, 0, 0, 0, 0, 0, 0, 0, 0] \\
+t_3^\top &= [0, 0, 1, 0, 0, 0, 0, 0, 0, 0]
+\end{align*}
+$$$
+
+Our embedding matrix is
+
+$$$
+\begin{align*}
+W_E = \begin{bmatrix}
+1 & -1 & 0 & 1 & -1 & 0 & 1 & -1 & 0 & 1\\
+-1 & 0 & 1 & -1 & 0 & 1 & -1 & 0 & 1 & -1\\
+0 & 1 & -1 & 0 & 1 & -1 & 0 & 1 & -1 & 0\\
+1 & 0 & -1 & 1 & 0 & -1 & 1 & 0 & -1 & 1\\
+-1 & 1 & 0 & -1 & 1 & 0 & -1 & 1 & 0 & -1
+\end{bmatrix}
+\end{align*}
+$$$
+
+Applying the embedding matrix, we get:
+
+$$$
+\begin{align*}
+x^{(0)}_1 &= W_E t_1 = [1, -1, 0, 1, -1] \\
+x^{(0)}_2 &= W_E t_2 = [-1, 0, 1, 0, 1] \\
+x^{(0)}_3 &= W_E t_3 = [0, 1, -1, -1, 0]
+\end{align*}
+$$$
+
+Next, we compute the values, keys, and queries using the matrices \(W_V\), \(W_K\), and \(W_Q\):
+
+$$$
+\begin{align*}
+W_V &= \begin{bmatrix}
+0.1 & 0.2 & 0.3 & 0.4 & 0.5 \\
+0.2 & 0.3 & 0.4 & 0.5 & 0.6
+\end{bmatrix} \\
+W_K &= \begin{bmatrix}
+0.1 & 0.2 & 0.3 & 0.4 & 0.5 \\
+0.2 & 0.3 & 0.4 & 0.5 & 0.6
+\end{bmatrix} \\
+W_Q &= \begin{bmatrix}
+0.1 & 0.2 & 0.3 & 0.4 & 0.5 \\
+0.2 & 0.3 & 0.4 & 0.5 & 0.6
+\end{bmatrix}
+\end{align*}
+$$$
+
+We compute the values, keys, and query for the tokens:
+
+$$$
+\begin{align*}
+v_1 &= W_V x^{(0)}_1 = [0.1, 0.2] \cdot [1, -1, 0, 1, -1] = [-0.1, -0.1] \\
+v_2 &= W_V x^{(0)}_2 = [0.1, 0.2] \cdot [-1, 0, 1, 0, 1] = [0.1, 0.4] \\
+v_3 &= W_V x^{(0)}_3 = [0.1, 0.2] \cdot [0, 1, -1, -1, 0] = [-0.1, -0.2]
+\end{align*}
+$$$
+
+$$$
+\begin{align*}
+k_1 &= W_K x^{(0)}_1 = [0.1, 0.2] \cdot [1, -1, 0, 1, -1] = [-0.1, -0.1] \\
+k_2 &= W_K x^{(0)}_2 = [0.1, 0.2] \cdot [-1, 0, 1, 0, 1] = [0.1, 0.4] \\
+k_3 &= W_K x^{(0)}_3 = [0.1, 0.2] \cdot [0, 1, -1, -1, 0] = [-0.1, -0.2]
+\end{align*}
+$$$
+
+$$$
+q_3 = W_Q x^{(0)}_3 = [0.1, 0.2] \cdot [0, 1, -1, -1, 0] = [-0.1, -0.2]
+$$$
+
+Next, we compute the attention scores and weights:
+
+$$$
+\begin{align*}
+a_1 &= \frac{q_3^\top k_1}{\sqrt{d_\text{head}}} = \frac{-0.1 \cdot -0.1 + -0.2 \cdot -0.1}{\sqrt{2}} = \frac{0.01 + 0.02}{\sqrt{2}} = \frac{0.03}{\sqrt{2}} \approx 0.021 \\
+a_2 &= \frac{q_3^\top k_2}{\sqrt{d_\text{head}}} = \frac{-0.1 \cdot 0.1 + -0.2 \cdot 0.4}{\sqrt{2}} = \frac{-0.01 + -0.08}{\sqrt{2}} = \frac{-0.09}{\sqrt{2}} \approx -0.064 \\
+a_3 &= \frac{q_3^\top k_3}{\sqrt{d_\text{head}}} = \frac{-0.1 \cdot -0.1 + -0.2 \cdot -0.2}{\sqrt{2}} = \frac{0.01 + 0.04}{\sqrt{2}} = \frac{0.05}{\sqrt{2}} \approx 0.035
+\end{align*}
+$$$
+
+$$$
+\begin{align*}
+w_1 &= \frac{e^{a_1}}{e^{a_1} + e^{a_2} + e^{a_3}} = \frac{e^{0.021}}{e^{0.021} + e^{-0.064} + e^{0.035}} \approx 0.34 \\
+w_2 &= \frac{e^{a_2}}{e^{a_1} + e^{a_2} + e^{a_3}} = \frac{e^{-0.064}}{e^{0.021} + e^{-0.064} + e^{0.035}} \approx 0.31 \\
+w_3 &= \frac{e^{a_3}}{e^{a_1} + e^{a_2} + e^{a_3}} = \frac{e^{0.035}}{e^{0.021} + e^{-0.064} + e^{0.035}} \approx 0.35
+\end{align*}
+$$$
+$$$
+\begin{align*}
+r_3 &= w_1 v_1 + w_2 v_2 + w_3 v_3 \\
+&= 0.34 \cdot [-0.1, -0.1] + 0.31 \cdot [0.1, 0.4] + 0.35 \cdot [-0.1, -0.2] \\
+&= [-0.038, 0.02]
+\end{align*}
+$$$
+
+Finally, we project this result back to the residual stream using \(W_O\):
+
+$$$
+\begin{align*}
+W_O &= \begin{bmatrix}
+0.1 & 0.2 \\
+0.2 & 0.3 \\
+0.3 & 0.4 \\
+0.4 & 0.5 \\
+0.5 & 0.6
+\end{bmatrix} \\
+o_3 &= W_O r_3 = \begin{bmatrix}
+0.1 & 0.2 \\
+0.2 & 0.3 \\
+0.3 & 0.4 \\
+0.4 & 0.5 \\
+0.5 & 0.6
+\end{bmatrix} \cdot \begin{bmatrix}
+-0.038 \\
+0.02
+\end{bmatrix} = \begin{bmatrix}
+-0.0038 \\
+-0.0056 \\
+-0.0074 \\
+-0.0092 \\
+-0.011
+\end{bmatrix}
+\end{align*}
+$$$
+Now we add this to \(x_3^{(0)}\) to get \(x_3^{(1)}\):
+
+$$
+x_3^{(1)} = x_3^{(0)} + o_3 = [0, 1, -1, -1, 0] + [-0.0038, -0.0056, -0.0074, -0.0092, -0.011] = [-0.0038, 0.9944, -1.0074, -1.0092, -0.011]
+$$
+
+**[todo: is it worth writing out the mlp? maybe not]**
 
