@@ -13,11 +13,27 @@ categories: transformers
 
 # Introduction
 
-This post introduces the Transformer architecture at a conceptual level, following the notation, language, and intuitions developed in Anthropic’s [“A Mathematical Framework for Transformer Circuits.”](https://transformer-circuits.pub/2021/framework) It builds up to an explanation of *induction heads*, a mechanism that simple Transformer models can use to perform a kind of in-context learning. I’m assuming you know a few deep learning basics: what an MLP is, something about training via SGD, **[anything else?]**, but haven’t necessarily looked into the Transformer architecture before.
+This post is the first in a series explaining the Transformer architecture, which underlies all modern large language models including ChatGPT, Claude, and Gemini.
 
-My goal is to motivate the Transformer architecture so that each piece (especially the attention mechanism) feels intuitive. 
+Why write another Transformer explainer when so many great ones exist already? I find most Transformer posts are heavily focused on *what* computations are involved, rather than *why* these computations are involved. I'll be erring in the other direction, hoping to develop helpful intuitions at the cost of practical implementation advice (and brevity).
 
-**[after draft is done: quick outline]**
+ Throughout the series, I'll following the notation, language, and exposition in Anthropic's [“A Mathematical Framework for Transformer Circuits”](https://transformer-circuits.pub/2021/framework) (hereafter, "Transformer Circuits"), which inspired the series title. My hope is to provide a more accessible introduction to the main results in this paper.
+
+ ## Series outline
+
+ This post will discuss one-layer Transformers, focusing especially on a conceptual understanding of the attention mechanism.
+
+ The next post will introduce the "QK" and "OV" circuits, which provide a more fine-grained way to describe the computations in an attention head.
+
+ The third and final post will introduce induction heads, a simple algorithm that a two-layer Transformer can implement, but which [seems to underly a surprising amount of the power of Transformers.](https://transformer-circuits.pub/2022/in-context-learning-and-induction-heads/index.html)
+
+ ## Post outline
+
+ In order to build up intuitions for what a Transformer model does, I start with a discussion of a completely abstract language model with the same inputs and output. What might we *hope* such a model learns? What would need to happen inside the model for this to be possible?
+ 
+ In keeping with the *gentle introduction* theme, I then walk through the attention mechanism in two stages: the first time, keeping track of how it updates *one* token, and the next looking at how it updates the rest.
+
+ I briefly discuss the MLP layer and close out with a rundown of a full one-layer Transformer model.
 
 # (Mostly) math-free warmup: a hypothetical language model
 
@@ -117,7 +133,7 @@ Of course, we still haven't left the "processing tokens individually" stage, so 
 
 So far, not very interesting -- I promised you information movement! We'll finally get that with *attention*.
 
-# Attention part 1: moving information to the last token
+# An oversimplified Transformer
 
 The simplest model that deserves to be a Transformer has a layer of **attention** in between the embedding and unembedding. As a function, it looks like
 
@@ -204,19 +220,19 @@ To sum up, here are all the parameters and activations of our simplified one-lay
 |----------------|-----------------------------|
 | $$W_E$$        | $$d_\text{model} \times n_\text{vocab}$$ |
 | $$W_\text{pos}$$ | $$d_\text{model} \times n$$ |
-| $$W_Q$$        | $$d_\text{head} \times d_\text{model}$$ |
-| $$W_K$$        | $$d_\text{head} \times d_\text{model}$$ |
-| $$W_V$$        | $$d_\text{head} \times d_\text{model}$$ |
+| $$W_Q, W_K, W_V$$| $$d_\text{head} \times d_\text{model}$$ |
 | $$W_O$$        | $$d_\text{model} \times d_\text{head}$$ |
 | $$W_U$$        | $$n_\text{vocab} \times d_\text{model}$$ |
 
-# Attention part 2: many queries, many heads
+# The full one-layer Transformer
 
-Our first tour through the attention mechanism described how the final token can receive information from all previous tokens in the context. In actual Transformer models, an attention head updates *every* token with information from the tokens preceding it. There are two reasons for this:
-1. In a model with multiple layers of attention, this allows for *composition* of attention heads. An important example of this phenomenon is *induction heads*, which we'll see later.
-2. When *training* a Transformer, the next token is predicted for each token in the sequence simultaneously: the output of ["The", "cat", "ran"] is something like ["big", "is", "quickly"] **[todo: make a better example here]**. So in contrast to the autoregressive setting, the outputs at each position are relevant.
+Our first tour through the attention mechanism described how the *final* token can receive information from all previous tokens in the context. In actual Transformer models, an attention head updates *every* token with information from the tokens preceding it. There are two reasons for this:
+1. In a model with multiple layers of attention, this allows for information to make multiple hops between tokens. This allows for richer contextual representations and more complicated algorithms. In part 3 of this series, we'll see an especially important simple example in *induction heads*.
+2. When *training* a Transformer, next-token probabilities are computed for every position simultaneously and compared to the actual next tokens that appear in the sequence. This is a huge efficiency improvement: when processing a sequence with $$n$$ tokens, this means you get $$n$$ pieces of feedback rather than just one.
 
-## The attention matrix
+In this walkthrough, we'll rewrite the attention mechanism in a way that reflects this, and also add in the second (simpler) piece of a Transformer block: the multilayer perceptron (MLP) layer.
+
+## The attention *matrix*
 
 We'll end up writing the attention mechanism somewhat differently this time around, but the only real difference is that every token will have its own query vector. The rest is bookkeeping (stacking vectors together into matrices).
 
@@ -318,10 +334,42 @@ Going forward in this series, we'll stick with the "independent and additive" in
 The end-to-end formula for a single attention head is therefore
 
 $$$
-x^{(1)} = x + \sum_{h=1}^{H} W_O^h W_V^h\,   x\, \text{softmax}^*\bigg( \frac{x^\top (W_Q^h)^\top W_K^h x} {\sqrt{d_\text{head}}}\bigg)^\top.
+x^{(1)} = x^{(0)} + \sum_{h=1}^{H} W_O^h W_V^h\,   x^{(0)} \, \text{softmax}^*\bigg( \frac{(x^{(0)})^\top (W_Q^h)^\top W_K^h x^{(0)}} {\sqrt{d_\text{head}}}\bigg)^\top.
 $$$
 
-# A full Transformer block
+## The multilayer perceptron
+
+Let's take a quick step back to the abstract language model we started with. We concluded that, no matter how much processing you do to individual tokens, a model with the same inputs and outputs as a Transformer can't outperform bigram statistics unless there's a way to move information between tokens. That's what motivated the last **[todo: wordcount]** words of discussion about the attention mechanism.
+
+But now that we've successfully moved information between tokens, we *can* benefit from some per-token processing! We do this with the simplest nontrivial neural network component, called a "fully connected layer" or "multilayer perceptron": two matrix multiplications with a nonlinear operation[^4] in the middle.
+
+[^4]: $$\text{ReLU}(x) = \max(x, 0)$$ is a common nonlinearity for MLPs, but Transformers more commonly use the "Gaussian error linear unit" or GELU, defined as $$\text{GELU}(x) = x \cdot \Phi(x)$$ where $$\Phi(x)$$ is the cumulative distribution function of the standard Gaussian. You can read more about GELU here; **[todo: add link]** the distinction is too subtle to be important for our discussion.
+
+We start by projecting to a higher dimension $$d_\text{mlp}$$. By convention, $$d_\text{mlp} = 4 \cdot d_\text{model}$$, but there's no special reason to use this value rather than another.
+
+$$$
+z = \text{ReLU}(W_1 x^{(1)} + b_1)
+$$$
+
+Here, $$W_1$$ is a $$d_\text{mlp} \times d_\text{model}$$ matrix and $$b_1$$ is a $$d_\text{mlp} \times 1$$ bias vector. Each token position is independently multiplied by $$W_1$$: that is, $$W_1 x^{(1)} = [W_1 x^{(1)}_1, \dots, W_1 x^{(1)}_n]$$.
+
+We then project back down to $$d_\text{model}$$ and add the result to the residual stream:
+
+$$$
+\begin{align*}
+m &= W_2 z + b_2 \\
+x^{(2)} &= x^{(1)} + m.
+\end{align*}
+$$$
+
+What are the MLP layers doing, aside from "processing tokens" in some vague way? It's actually not so straightforward to say. The attention layer is more complicated to write down, but has a clear concept behind it in terms of reading, moving, and writing information. The MLP is mathematically simple but conceptually more opaque: those computations could be doing anything!
+
+We're not completely in the dark, however. Various lines of work have shown that MLPs in large language models "store facts" in some sense. Some resources that go into more detail on this are 
+* [3blue1brown on "How might LLMs store facts"](https://www.youtube.com/watch?v=9-Jl0dxWQs8&vl=en)
+* [Transformer Feed-Forward Layers are Key-Value Memories](https://arxiv.org/abs/2012.14913) **[todo: one-sentence summary]**
+* [Locating and Editing Factual Associations in GPT](https://arxiv.org/abs/2202.05262), aka "Moving the Eiffel Tower to Rome," which attempts to track down exactly where in the model factual associations occur -- and uses this knowledge to edit them. Famously, it is able to get a GPT model to not just say that the Eiffel Tower is in Rome, but also answer contextually relevant questions like "What can I see from the Eiffel Tower?" (The Colosseum and St. Peter's Cathedral) and "What should I eat nearby?" (pizza and pasta).
+
+One "Transformer block" consists of a multi-head attention layer followed by an MLP layer. A full Transformer model consists of the embedding, several Transformer blocks, and then unembedding.
 
 ## The full one-layer Transformer
 
@@ -337,8 +385,8 @@ $$$
 | Attention result  | $$r^h = v^h(A^h)^\top$$                          | $$d_\text{head} \times n$$ |
 | Attention output  | $$o^h = W_O^h r^h$$                              | $$d_\text{model} \times n$$ |
 | Post-attention embeddings | $$x^{(1)} = x^{(0)} + \sum_h o^h$$       | $$d_\text{model} \times n$$ |
-| MLP hidden layer  | $$h = \text{ReLU}(W_1 x^{(1)} + b_1)$$           | $$d_\text{mlp} \times n$$ | 
-| MLP output        | $$m = W_2 h + b_2$$                              | $$d_\text{model} \times n$$ |
+| MLP hidden layer  | $$z = \text{ReLU}(W_1 x^{(1)} + b_1)$$           | $$d_\text{mlp} \times n$$ | 
+| MLP output        | $$m = W_2 z + b_2$$                              | $$d_\text{model} \times n$$ |
 | Post-MLP embeddings | $$x^{(2)} = x^{(1)} + m$$                      | $$d_\text{model} \times n$$ |
 | Logits            | $$\ell = W_U x^{(2)}$$                           | $$n_\text{vocab} \times n$$ |
 | Probabilities     | $$p = \text{softmax}(\ell)$$                     | $$n_\text{vocab} \times n$$ |
@@ -348,12 +396,12 @@ $$$
 |------------------|-----------------------------|
 | $$W_E$$          | $$d_\text{model} \times n_\text{vocab}$$ |
 | $$W_\text{pos}$$ | $$d_\text{model} \times n$$ |
-| $$W_Q^h$$        | $$d_\text{head} \times d_\text{model}$$ |
-| $$W_K^h$$        | $$d_\text{head} \times d_\text{model}$$ |
-| $$W_V^h$$        | $$d_\text{head} \times d_\text{model}$$ |
+| $$W_Q^h,W_K^h,W_V^h$$ | $$d_\text{head} \times d_\text{model}$$ |
 | $$W_O^h$$        | $$d_\text{model} \times d_\text{head}$$ |
-| $$W_1$$          | $$d_\text{mlp} \times d_\text{model}$$  |
-| $$b_1$$          | $$d_\text{mlp}$$ |
-| $$W_2$$          | $$d_\text{model} \times d_\text{mlp}$$  |
-| $$b_2$$          | $$d_\text{model}$$ |
+| $$W_1, b_1$$     | $$d_\text{mlp} \times d_\text{model}$$, &nbsp; $$d_\text{mlp}$$  |
+| $$W_2, b_2$$     | $$d_\text{model} \times d_\text{mlp}$$, &nbsp; $$d_\text{model}$$ |
 | $$W_U$$          | $$n_\text{vocab} \times d_\text{model}$$ |
+
+## A brief note on LayerNorm
+
+There's still *one* important ingredient missing from this "full" one-layer Transformer, which is LayerNorm. The gist is that, before each attention and MLP layer, we normalize the inputs by subtracting the mean and dividing by the standard deviation. While LayerNorm is helpful for training stability, it's not very conceptually important (and this post is long enough already), so I'm leaving it out of this post. You can read more about LayerNorm here and here **[todo: layernorm links]**.
