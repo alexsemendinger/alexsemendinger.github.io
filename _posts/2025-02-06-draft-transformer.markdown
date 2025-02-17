@@ -9,6 +9,8 @@ categories: transformers
 
 # DRAFT -- INCOMPLETE
 
+**[general todo: references]**
+
 # Introduction
 
 This post introduces the Transformer architecture at a conceptual level, following the notation, language, and intuitions developed in Anthropic’s [“A Mathematical Framework for Transformer Circuits.”](https://transformer-circuits.pub/2021/framework) It builds up to an explanation of *induction heads*, a mechanism that simple Transformer models can use to perform a kind of in-context learning. I’m assuming you know a few deep learning basics: what an MLP is, something about training via SGD, **[anything else?]**, but haven’t necessarily looked into the Transformer architecture before.
@@ -73,12 +75,6 @@ We can describe (part of) the processing phase as “moving information between 
 
 Or more concisely: “What are we moving, and how are we moving it?”
 
-**[ todo, but probably not: explore the consequences of this structure more for an abstract model? E.g.**
-
-* **One piece of info from each prev token can move to current**  
-* **Only current gets updated**  
-* **Idk maybe something else ]**
-
 # What's in a Transformer?
 
 Summing up what we've laid out so far, we have a language model that
@@ -89,28 +85,7 @@ Summing up what we've laid out so far, we have a language model that
 
 These are the ingredients of a GPT-style Transformer.
 
-## Layers and notation
-
-Before we start, a general overview of the pieces of a Transformer and the notation we'll be using. Each of these pieces will be explained later; you can come back to this section for reference. 
-
-**[todo: ok this doesn't work here as written. maybe appendix]**
-
-### Activations
-* Inputs: tokens $$t = [t_1, \dots, t_n]$$
-    * Each $$t_i$$ is a one-hot vector of size $$n_\text{vocab}$$.
-    * $$t$$ is a $$n_\text{vocab} \times n$$ matrix, with individual tokens as columns.
-* Residual stream: $$x = [x_1, \dots, x_n] = W_E t.$$ 
-    * Each $$x_i$$ is a vector of size $$d_\text{model}$$
-    * $$x$$ is a $$d_\text{model} \times n$$ matrix, with token embeddings as columns.
-* Attention head
-    * $$q, k, v$$
-
-### Parameters
-
-# Walking through a one-layer Transformer
-
-
-## Zero layers: embeddings, unembeddings, logits
+# A "zero-layer Transformer": embeddings, unembeddings, logits
 
 Here's where the math begins.
 
@@ -142,7 +117,7 @@ Of course, we still haven't left the "processing tokens individually" stage, so 
 
 So far, not very interesting -- I promised you information movement! We'll finally get that with *attention*.
 
-## Attention part 1: updating the last token
+# Attention part 1: moving information to the last token
 
 The simplest model that deserves to be a Transformer has a layer of **attention** in between the embedding and unembedding. As a function, it looks like
 
@@ -168,7 +143,7 @@ Here’s how “Attention is All You Need” summarizes attention:
 
 We'll walk through each of these components in turn.
 
-### Values: What information is being moved?
+## Values: What information is being moved?
 
 Our output is going to be a “weighted sum of values.” 
 
@@ -178,7 +153,7 @@ We imagine that the embedding (somehow) represents different pieces of informati
 
 Therefore, $$W_V$$ answers the question: "what information are we moving"?
 
-### Queries and Keys: For each previous token, how important is the information in its value?
+## Queries and Keys: For each previous token, how important is the information in its value?
 
 Next, we need to compute the weights. These depend on two additional parameter matrices, $$W_Q$$ and $$W_K$$, each of shape $$(d_\text{head}, d_\text{model})$$ (the same shape as $$W_V$$).
 
@@ -194,18 +169,54 @@ Putting this together, we end up with a "result" vector $$r_n = \sum_i a_i v_i$$
 
 We've now answered question 2: "for each token, how important is the information it's offering?"
 
-### Output: How do we incorporate this information into the representation of the current token?
+## Output: How do we incorporate this information into the representation of the current token?
 
 All that’s left is to project our weighted sum back to the residual stream. We do this via one last matrix multiplication: $$o_n = W_O r_n$$. The matrix $$W_O$$ plays a similar role to $$W_V$$, but in reverse: it picks out which subspace of the residual stream the data in $$r_n$$ will be stored in.
 
+This gets added to the orignal token embedding: $$x^{(1)}_n = x^{(0)}_n + o_n$$.
 
-## Attention part 2: many queries, many heads
+## Unembedding, logits, probabilities
+
+We've reached the end of the residual stream in our tiny one-layer model, so it's time to compute the outputs. We unembed to produce logits $$\ell_{n+1} = W_U x^{(1)}_n$$, which we can then turn into probabiltiies $$p_{n+1} = \text{softmax}(\ell_{n+1})$$. Each of these is a vector of size $$n_\text{vocab}$$, with entries reflecting the probability the model assigns to each possible next token following the input sequence.
+
+
+## The full one-layer, attention-only, just-predicts-the-next-token Transformer
+
+To sum up, here are all the parameters and activations of our simplified one-layer Transformer. Remember that this version is nonstandard: if you want to compare this to a practical Transformer implementation, you should use the tables that appear later.
+
+| Activation Name   | Expression                                   | Shape                     |
+|-------------------|----------------------------------------------|---------------------------|
+| Input tokens      | $$t = [t_1, \dots, t_n]$$                    | $$n_\text{vocab} \times n$$ |
+| Embedding         | $$x = [x_1, \dots, x_n] = W_E t + W_\text{pos}$$ | $$d_\text{model} \times n$$ |
+| Query             | $$q_n = W_Q x_n$$                            | $$d_\text{head} \times 1$$ |
+| Keys              | $$k = [k_1, \dots, k_n]= W_K x$$             | $$d_\text{head} \times n$$ |
+| Values            | $$v = [v_1, \dots, v_n] = W_V x$$            | $$d_\text{head} \times n$$ |
+| Attention scores  | $$s = q_n^\top k / \sqrt{d_\text{head}}$$    | $$n$$  |
+| Attention weights | $$a = \text{softmax}(s)$$                    | $$n$$  |
+| Attention result  | $$r_n = \sum_{i=1}^n a_i v_i$$               | $$d_\text{head} \times 1$$ |
+| Attention output  | $$o_n = W_O r_n$$                            | $$d_\text{model}\times 1$$ |
+| Updated last-token embedding | $$x^{(1)}_n = x_n + o_n$$         | $$d_\text{model}\times 1$$ |
+| Next-token logits | $$\ell_{n+1} = W_U x^{(1)}_n$$               | $$n_\text{vocab}\times 1$$ |
+| Next-token probabilities | $$p_{n+1} = \text{softmax}(\ell_n)$$  | $$n_\text{vocab}\times 1$$ |
+
+
+| Parameter Name | Shape                       |
+|----------------|-----------------------------|
+| $$W_E$$        | $$d_\text{model} \times n_\text{vocab}$$ |
+| $$W_\text{pos}$$ | $$d_\text{model} \times n$$ |
+| $$W_Q$$        | $$d_\text{head} \times d_\text{model}$$ |
+| $$W_K$$        | $$d_\text{head} \times d_\text{model}$$ |
+| $$W_V$$        | $$d_\text{head} \times d_\text{model}$$ |
+| $$W_O$$        | $$d_\text{model} \times d_\text{head}$$ |
+| $$W_U$$        | $$n_\text{vocab} \times d_\text{model}$$ |
+
+# Attention part 2: many queries, many heads
 
 Our first tour through the attention mechanism described how the final token can receive information from all previous tokens in the context. In actual Transformer models, an attention head updates *every* token with information from the tokens preceding it. There are two reasons for this:
 1. In a model with multiple layers of attention, this allows for *composition* of attention heads. An important example of this phenomenon is *induction heads*, which we'll see later.
 2. When *training* a Transformer, the next token is predicted for each token in the sequence simultaneously: the output of ["The", "cat", "ran"] is something like ["big", "is", "quickly"] **[todo: make a better example here]**. So in contrast to the autoregressive setting, the outputs at each position are relevant.
 
-### The attention matrix
+## The attention matrix
 
 We'll end up writing the attention mechanism somewhat differently this time around, but the only real difference is that every token will have its own query vector. The rest is bookkeeping (stacking vectors together into matrices).
 
@@ -215,11 +226,9 @@ $$$
 q = W_Q x^{(0)}, \quad k= W_K x^{(0)}, \quad v = W_V x^{(0)}.
 $$$
 
-For each query, we computute attention scores based on all the preceding keys: $$s_{ij} = q_i^\top k_j / \sqrt{d_\text{head}}$$ for $$j \leq i$$. And we turn these into weights by taking the softmax: $$a_{ij} = [\text{softmax}([s_{i1}, s_{i2}, \dots, s_{ii}])]_j$$. 
+For each query, we computute attention scores based on all the preceding keys: $$s_{ij} = q_i^\top k_j / \sqrt{d_\text{head}}$$ for $$j \leq i$$. And we turn these into weights by taking the softmax: $$a_{ij} = [\text{softmax}([s_{i1}, s_{i2}, \dots, s_{ii}])]_j$$.
 
 Finally, we compute our result $$r_i = \sum_{j=1}^i a_{ij} v_j$$ and our output $$o_i = W_O r_i$$, which is added to $$x^{(0)}_i$$ in the residual stream.
-
-**[todo: ok i'm going to push thru for now but there's going to need to be some reckoning with the notation throughout. it's totally unclear that $$r_i$$ and especially $$v_i$$ are vectors while earlier $$a_i$$ is a scalar. i nearly tricked myself into thinking $$\sum_j a_{ij} v_j$$ is a matrix-vector product $$Av$$, but it isn't!]**
 
 The double indices in $$s_{ij}$$ and $$a_{ij}$$ indicate that it might be natural to write these as matrices. And indeed, this is usually how they're presented. It makes sense to write the whole attention pattern out first (setting $$n = 4$$ so it's easy to visualize):
 
@@ -253,7 +262,7 @@ s_{11} & -\infty & -\infty & -\infty \\
 s_{21} & s_{22} & -\infty & -\infty \\
 s_{31} & s_{32} & s_{33} & -\infty \\
 s_{41} & s_{42} & s_{43} & s_{44}
-\end{bmatrix} = \begin{bmatrix}
+\end{bmatrix} = \frac{1}{\sqrt{d_\text{head}}}\begin{bmatrix}
 q_1^\top k_1 & -\infty & -\infty & -\infty \\ 
 q_2^\top k_1 & q_2^\top k_2 & -\infty & -\infty \\
 q_3^\top k_1 & q_3^\top k_2 & q_3^\top k_3 & -\infty \\
@@ -272,18 +281,79 @@ q_4^\top k_1 & q_4^\top k_2 & q_4^\top k_3 & q_4^\top k_4
 \end{bmatrix}
 $$$
 
-With this notation, we can write the attention function the way it's presented in "Attention is All You Need":
+which lets us write the attention pattern as
 
 $$$
-r = \text{softmax}^*\bigg( \frac{q^\top k} {\sqrt{d_\text{head}}}\bigg)v
+A = \text{softmax}^*\bigg( \frac{q^\top k} {\sqrt{d_\text{head}}}\bigg)
 $$$
 
 where $$\text{softmax}^*$$ indicates that you need to replace the upper-triangular portion of the matrix with $$-\infty$$ values to prevent information from flowing in the wrong direction.
 
-**[todo: W_0]**
+We can package our result calculations $$r_i = \sum_{j=1}^n a_{ij} v_j$$ for $$i=1, \dots, n$$ into one matrix-vector product: $$r = vA^\top$$, and then project back to the residual stream via $$o = W_O r$$.
+
+## Multiple heads
+
+Up to this point, I've been acting as if there's a single attention calculation in each attention block. But in practice, this isn't the case: attention blocks will have many "heads" of attention running in parallel. **[todo: GPT2-small number]** Each head $$h_i$$ has its own weight matrices $$W_Q^{h_i}, W_K^{h_i}, W_V^{h_i}$$ producing queries, keys, and values $$q^{h_i}, k^{h_i}, v^{h_i}$$, attention pattern $$A^{h_i}$$, and results $$r^{h_i}$$. Typically, if there are $$H$$ heads, the head dimension will be $$d_\text{head} = d_\text{model} / H$$.
+
+There are two equivalent ways to think about how to combine the results of each attention head. The conceptually simpler way, used in the "Transformer Circuits" paper, is to give each attention head its own output matrix $$W_O^{h_i}$$ and add up the outputs of each head: $$x^{(1)} = x^{(0)} + \sum_{i=1}^H o^{h_i}$$. This makes it clear that each head operates independently, and each contributes to the result in exactly the same way.
+
+However, this *isn't* how the orignal paper on Transformers writes the operation, and isn't how it's usually implemented. It's more efficient to perform one big matrix multiplication rather than adding up the results of several small matrix multiplications, so practical implementations will find a way to do this whenever possible. 
+
+Here we let $$r^{h_1}, \dots, r^{h_H}$$ be the results, and let
+
+$$$
+R = \begin{bmatrix} r^{h_1} \\ \vdots \\ r^{h_H} \end{bmatrix}
+$$$
+
+be the vector obtained from stacking them to obtain a vector of size $$d_\text{head} \cdot H = d_\text{model}$$.  The overall attention output is then $$o = W_O R$$, where $$W_O$$ is $$d_\text{model} \times d_\text{model}$$. (Note that we're now *enforcing* the identity $$d_\text{head} = d_\text{model} / H$$, whereas this could have just been a convention from the additive perspective.)
+
+Why are these the same? We can split up $$W_O = [W_O^{h_1} \,|\, \dots \,|\, W_O^{h_H}]$$, where each block is of shape $$d_\text{model} \times d_\text{head}$$. Then
+
+$$$
+W_O R = \left[W_O^{h_1} \,|\, \dots \,|\, W_O^{h_H}\right] \begin{bmatrix} r^{h_1} \\ \vdots \\ r^{h_H} \end{bmatrix} = \sum_{i=1}^H W_O^{h_i} r^{h_i}.
+$$$
+
+Going forward in this series, we'll stick with the "independent and additive" interpretation, following "Transformer Circuits." But it's important to remember that this *isn't* what you'll see in a typical Transformer implementation.
 
 The end-to-end formula for a single attention head is therefore
 
 $$$
-x \leftarrow x + \text{softmax}^*\bigg( \frac{x^\top W_Q^\top W_K x} {\sqrt{d_\text{head}}}\bigg) x^\top W_V^\top W_O^\top.
+x^{(1)} = x + \sum_{h=1}^{H} W_O^h W_V^h\,   x\, \text{softmax}^*\bigg( \frac{x^\top (W_Q^h)^\top W_K^h x} {\sqrt{d_\text{head}}}\bigg)^\top.
 $$$
+
+# A full Transformer block
+
+## The full one-layer Transformer
+
+| Activation Name   | Expression                                       | Shape                     |
+|-------------------|--------------------------------------------------|---------------------------|
+| Input tokens      | $$t = [t_1, \dots, t_n]$$                        | $$n_\text{vocab} \times n$$ |
+| Embedding | $$x^{(0)} = [x^{(0)}_1, \dots, x^{(0)}_n] = W_E t + W_\text{pos}$$ | $$d_\text{model} \times n$$ |
+| Queries           | $$q^h = W_Q^h x^{(0)}$$                          | $$d_\text{head} \times n$$ |
+| Keys              | $$k^h = W_K^h x^{(0)}$$                          | $$d_\text{head} \times n$$ |
+| Values            | $$v^h = W_V^h x^{(0)}$$                          | $$d_\text{head} \times n$$ |
+| Attention scores  | $$S^h = (q^h)^\top k^h / \sqrt{d_\text{head}}$$  | $$n \times n$$  |
+| Attention weights | $$A^h = \text{softmax}^*(S^h)$$                  | $$n \times n$$  |
+| Attention result  | $$r^h = v^h(A^h)^\top$$                          | $$d_\text{head} \times n$$ |
+| Attention output  | $$o^h = W_O^h r^h$$                              | $$d_\text{model} \times n$$ |
+| Post-attention embeddings | $$x^{(1)} = x^{(0)} + \sum_h o^h$$       | $$d_\text{model} \times n$$ |
+| MLP hidden layer  | $$h = \text{ReLU}(W_1 x^{(1)} + b_1)$$           | $$d_\text{mlp} \times n$$ | 
+| MLP output        | $$m = W_2 h + b_2$$                              | $$d_\text{model} \times n$$ |
+| Post-MLP embeddings | $$x^{(2)} = x^{(1)} + m$$                      | $$d_\text{model} \times n$$ |
+| Logits            | $$\ell = W_U x^{(2)}$$                           | $$n_\text{vocab} \times n$$ |
+| Probabilities     | $$p = \text{softmax}(\ell)$$                     | $$n_\text{vocab} \times n$$ |
+
+
+| Parameter        | Shape                       |
+|------------------|-----------------------------|
+| $$W_E$$          | $$d_\text{model} \times n_\text{vocab}$$ |
+| $$W_\text{pos}$$ | $$d_\text{model} \times n$$ |
+| $$W_Q^h$$        | $$d_\text{head} \times d_\text{model}$$ |
+| $$W_K^h$$        | $$d_\text{head} \times d_\text{model}$$ |
+| $$W_V^h$$        | $$d_\text{head} \times d_\text{model}$$ |
+| $$W_O^h$$        | $$d_\text{model} \times d_\text{head}$$ |
+| $$W_1$$          | $$d_\text{mlp} \times d_\text{model}$$  |
+| $$b_1$$          | $$d_\text{mlp}$$ |
+| $$W_2$$          | $$d_\text{model} \times d_\text{mlp}$$  |
+| $$b_2$$          | $$d_\text{model}$$ |
+| $$W_U$$          | $$n_\text{vocab} \times d_\text{model}$$ |
