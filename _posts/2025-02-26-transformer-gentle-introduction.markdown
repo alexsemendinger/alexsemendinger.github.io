@@ -68,11 +68,11 @@ You could do a bit better by looking at $$n$$\-grams for larger values of $$n$$,
 
 [^3]:  Although see [https://infini-gram.io/](https://infini-gram.io/) which uses some clever tricks to approximate $$n$$-grams for arbitrary values of $$n$$ (and which is the source of the $$n$$-gram example sentences). Despite its impressiveness, it’s not useful as an autoregressive model.
 
-For situations where $$n$$-grams are appropriate, there are more sophisticated ways to work around these problems. 
+For situations where $$n$$-grams are appropriate, there are more sophisticated ways to work around the first two problems, but the extremely limited context window is a hard constraint.
 
 ## Getting information out of tokens
 
-To avoid this exponential trap, we’ll add a constraint to our (still hypothetical) model: the model can "process" each token in some way, but the final prediction will depend solely on the processed version of the final token $$t_n$$.
+To avoid the issues with $$n$$-grams, we’ll add a constraint to our (still hypothetical) model: the model can "process" each token in some way, but the final prediction will depend solely on the processed version of the final token $$t_n$$.
 
 There's no benefit to processing each token independently, in isolation: in that case, you still can't beat bigram statistics. So if we want to do better, we’ll have to *find a way for the other tokens in the context to modify the model's version of $$t_n$$*. 
 
