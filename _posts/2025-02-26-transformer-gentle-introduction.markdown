@@ -1,13 +1,12 @@
 ---
 layout: post
 title:  "A Gentle Introduction to Transformers"
-date:   2025-02-26 13:21:13 -0500
+date:   2025-02-26 10:00:00 -0500
 categories: transformers
+permalink: /transformers-gentle-introduction
 ---
 
-# A Gentle Introduction to Transformers
-
-**Draft, work in progress. Feedback welcomed on [this Google Doc (equations don't display)](https://docs.google.com/document/d/1aLBG-SPTOHepFRa5gfcLGPvFx5MpWx8mo8ncjqXIQ-g/edit?usp=sharing)**.
+**Draft, work in progress. Feedback welcomed on [this Google Doc (equations won't display)](https://docs.google.com/document/d/1aLBG-SPTOHepFRa5gfcLGPvFx5MpWx8mo8ncjqXIQ-g/edit?usp=sharing)**.
 
 # Introduction
 
@@ -34,7 +33,7 @@ In keeping with the *gentle introduction* theme, we then walk through the attent
 
 We'll close by briefly discussing MLPs and LayerNorm, which are the other main components of a Transformer.
 
-# A hypothetical language model
+# Warmup: a hypothetical language model
 
 (If you want to get right to Transformers, you can skip to ["What's in a Transformer"](#whats-in-a-transformer) below)
 
@@ -121,7 +120,7 @@ You shouldn't be surprised to hear that these are exactly the ingredients of a G
 
 Here's where the math begins.
 
-GPT-2 Small, which will be our running reference example, has a vocabulary size of 50,257 tokens (we'll call this $$n_{\text{vocab}}$$). Each token $$t_i$$ is represented first as a "one-hot" vector: e.g. the token with index 324 is represented by a vector of length 50,257 consisting of a $$1$$ in position 324 and zeros elsewhere. We'll bundle all these one-hot-encoded tokens together as the columns of an $$n_\text{vocab} \times n$$ matrix $$t = [t_1, \dots, t_n]$$, which will serve as our input.
+GPT-2 Small, which will be our running reference example, has a vocabulary size of 50,257 tokens (we'll call this $$n_{\text{vocab}}$$). Each token $$t_i$$ is represented first as a "one-hot" vector: e.g. the token with index -24 is represented by a vector of length 50,257 consisting of a $$1$$ in position 324 and zeros elsewhere. We'll bundle all these one-hot-encoded tokens together as the columns of an $$n_\text{vocab} \times n$$ matrix $$t = [t_1, \dots, t_n]$$, which will serve as our input.
 
 Fifty thousand dimensions  is a lot to work with, so the first thing the model does is **embed** the tokens into a lower-dimensional space of size $$d_{\text{model}}$$. In GPT-2, $$d_{\text{model}} = 768$$.
 
@@ -164,7 +163,7 @@ The $$k$$-th entry of this output vector is the probability that the model assig
 
 Of course, we still haven't left the "processing tokens individually" stage, so the best we can hope for here is for the model to encode (say it with me) *bigram statistics*. "Transformer Circuits" reports observing this in practice:
 
-> In particular, the \(W_U W_E\) term seems to often help represent bigram statistics which aren't described by more general grammatical rules, such as the fact that "Barack" is often followed by "Obama".
+> In particular, the $$W_U W_E$$ term seems to often help represent bigram statistics which aren't described by more general grammatical rules, such as the fact that "Barack" is often followed by "Obama".
 
 So far, not very interesting. I promised there would be information movement! We'll finally get that with *attention*.
 
@@ -360,13 +359,13 @@ $$
 
 be the vector of size $$d_\text{head} \cdot H = d_\text{model}$$ obtained from stacking them on top of each other.  The overall attention output is then $$o = W_O R$$, where $$W_O$$ is $$d_\text{model} \times d_\text{model}$$. (Note that we're now *enforcing* the identity $$d_\text{head} = d_\text{model} / H$$, whereas this was just a convention from the additive perspective.)
 
-Why are these the same? We can split up $$W_O$$ into a block matrix $$[W_O^{h_1} \,|\, \dots \,|\, W_O^{h_H}]$$, where each block is of shape $$d_\text{model} \times d_\text{head}$$. Then
+Why are these the same? We can split up $$W_O$$ into a block matrix $$[W_O^{h_1} \,\vert\, \dots \,\vert\, W_O^{h_H}]$$, where each block is of shape $$d_\text{model} \times d_\text{head}$$. Then
 
 $$
 W_O R = \left[W_O^{h_1} \,|\, \dots \,|\, W_O^{h_H}\right] \begin{bmatrix} r^{h_1} \\ \vdots \\ r^{h_H} \end{bmatrix} = \sum_{i=1}^H W_O^{h_i} r^{h_i}.
 $$
 
-Going forward in this series, we'll stick with the "independent and additive" interpretation, following "Transformer Circuits." But it's important to remember that this *isn't* what you'll see in a typical Transformer implementation.
+Going forward, we'll stick with the "independent and additive" interpretation, following "Transformer Circuits." But it's important to remember that this *isn't* what you'll see in a typical Transformer implementation.
 
 The end-to-end formula for a full layer of attention is therefore
 
