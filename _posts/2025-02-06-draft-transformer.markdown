@@ -137,17 +137,17 @@ There are several solutions to this problem. We'll go with the simplest, which i
 
 Putting the token and positional embeddings together, we have the "level-zero representation" of our tokens in the model:
 
-$$$
+$$
 x^{(0)} = W_E t + W_\text{pos}.
-$$$
+$$
 
 ## Unembedding
 
 The trivial “zero-layer Transformer” immediately maps these token embeddings back to a vector of size $$d_{\text{vocab}}$$ via a $$d_\text{vocab} \times d_\text{model}$$ **unembedding matrix** $$W_U$$. The entries of the resulting vector $$W_U x^{(0)}$$ are called the **logits**. Higher logit values correspond to likelier tokens, but this vector isn't itself a probability distribution: the entries might take any value, and don't sum to 1. To turn the logits into probabilities, we use the *softmax* function, defined by
 
-$$$ 
+$$ 
 \text{softmax}(x) = \text{softmax}\left(\begin{bmatrix} x_1 \\ \vdots \\ x_n \end{bmatrix} \right) = \frac{1}{e^{x_1} + \dots + e^{x_n}} \begin{bmatrix} e^{x_1} \\ \vdots \\ e^{x_n}\end{bmatrix}.
-$$$
+$$
 
 There are a number of reasons this is a nice choice, but the most important are:
 1. For any value of $$x$$, $$e^x$$ is positive, so each entry in $$\text{softmax}(x)$$ is positive.
@@ -156,9 +156,9 @@ There are a number of reasons this is a nice choice, but the most important are:
 That is: for any input $$x$$, we can interpret $$\text{softmax}(x)$$ as a probability distribution, just like we wanted!
 
 Expressed as a function, our zero-layer Transformer is 
-$$$
+$$
 T([t_1, \dots, t_n]) = T(t_n) = \text{softmax}(W_U x^{(0)}_n) = \text{softmax}\big(W_U(W_Et_n + W_\text{pos}) \big).
-$$$
+$$
 
 The $$k$$-th entry of this output vector is the probability that the model assigns to the token with index $$k$$ appearing next.
 
@@ -172,13 +172,13 @@ So far, not very interesting. I promised there would be information movement! We
 
 The simplest model that deserves to be called a Transformer has a layer of **attention** in between the embedding and unembedding. 
 
-$$$
+$$
 \begin{align*}
 x^{(0)} &= W_E t + W_\text{pos} & \text{(embedding)} \\
 x^{(1)}_n &= x^{(0)}_n + \text{Attn}(x^{(0)}_1, \dots, x^{(0)}_n) & \text{(add attention result)} \\
 T(t) &= \text{softmax}(W_Ux^{(1)}_n) & \text{(unembedding)}
 \end{align*}
-$$$
+$$
 
 Note that this is a **residual connection**: rather than setting $$x^{(1)} = \text{Attn}(x^{(0)}_1, \dots, x^{(0)}_n)$$ directly, the attention output is *added* to the original embedding $$x^{(0)}_n$$. 
 
@@ -275,9 +275,9 @@ We'll end up writing the attention mechanism somewhat differently this time arou
 
 Let's write this out: we compute queries, keys, and values for each token:
 
-$$$
+$$
 q = W_Q x^{(0)}, \quad k= W_K x^{(0)}, \quad v = W_V x^{(0)}.
-$$$
+$$
 
 For each query, we computute attention scores based on all the preceding keys: $$s_{ij} = q_i^\top k_j / \sqrt{d_\text{head}}$$ for $$j \leq i$$. And we turn these into weights by taking the softmax: $$a_{i} = \text{softmax}([s_{i1}, s_{i2}, \dots, s_{ii}])$$. (Note that $$a_i$$ is now an $$i$$-dimensional vector, with components $$a_{ij}$$.)
 
@@ -285,14 +285,14 @@ Finally, we compute our result $$r_i = \sum_{j=1}^i a_{ij} v_j$$ and our output 
 
 The double indices in $$s_{ij}$$ and $$a_{ij}$$ indicate that it might be natural to write these as matrices. And indeed, this is usually how they're presented. It makes sense to write the whole attention pattern out first (setting $$n = 4$$ so it's easy to visualize):
 
-$$$
+$$
 A = \begin{bmatrix}
 a_{11} & 0 & 0 & 0 \\
 a_{21} & a_{22} & 0 & 0 \\
 a_{31} & a_{32} & a_{33} & 0 \\
 a_{41} & a_{42} & a_{43} & a_{44}
 \end{bmatrix}
-$$$
+$$
 
 In order to write this as a square matrix, we've set $$a_{ij} = 0$$ when $$j > i$$. This allows us to write $$r_i = \sum_{j=1}^n a_{ij} v_j$$ (summing up to $$j=n$$ rather than stopping at $$j=i$$), since the additional terms don't contribute anything.
 
@@ -300,16 +300,16 @@ It might not be obvious how to write the full matrix of attention *scores*. Agai
 
 Let's look at a concrete example of softmax to figure out what this should be:
 
-$$$
+$$
 \text{softmax}([1, 2]) = \bigg[\frac{e}{e + e^2}, \frac{e^2}{e + e^2}\bigg] \approx
 [0.269, 0.731]
-$$$
+$$
 
 We want to pad this with some value $$P$$ so that $$\text{softmax}([1, 2, P]) = [0.269, 0.731, 0]$$. Looking at the softmax formula, this means we want $$e^P = 0$$. The "solution" is to set $$P = -\infty$$. (In practice, you might just use a large negative value.)
 
 So our attention score matrix is
 
-$$$
+$$
 S = \begin{bmatrix}
 s_{11} & -\infty & -\infty & -\infty \\
 s_{21} & s_{22} & -\infty & -\infty \\
@@ -321,24 +321,24 @@ q_2^\top k_1 & q_2^\top k_2 & -\infty & -\infty \\
 q_3^\top k_1 & q_3^\top k_2 & q_3^\top k_3 & -\infty \\
 q_4^\top k_1 & q_4^\top k_2 & q_4^\top k_3 & q_4^\top k_4
 \end{bmatrix}
-$$$
+$$
 
 We can also write this more concisely as:
 
-$$$
+$$
 q^\top k = \begin{bmatrix}
 q_1^\top k_1 & q_1^\top k_2 & q_1^\top k_3 & q_1^\top k_4 \\
 q_2^\top k_1 & q_2^\top k_2 & q_2^\top k_3 & q_2^\top k_4 \\
 q_3^\top k_1 & q_3^\top k_2 & q_3^\top k_3 & q_3^\top k_4 \\
 q_4^\top k_1 & q_4^\top k_2 & q_4^\top k_3 & q_4^\top k_4
 \end{bmatrix}
-$$$
+$$
 
 which lets us write the attention pattern as
 
-$$$
+$$
 A = \text{softmax}^*\bigg( \frac{q^\top k} {\sqrt{d_\text{head}}}\bigg)
-$$$
+$$
 
 where $$\text{softmax}^*$$ indicates that you need to replace the upper-triangular portion of the matrix with $$-\infty$$ values to prevent information from flowing in the wrong direction.
 
@@ -354,25 +354,25 @@ However, this *isn't* how the orignal paper on Transformers writes the operation
 
 Here we let $$r^{h_1}, \dots, r^{h_H}$$ be the results from each attention head, and let
 
-$$$
+$$
 R = \begin{bmatrix} r^{h_1} \\ \vdots \\ r^{h_H} \end{bmatrix}
-$$$
+$$
 
 be the vector of size $$d_\text{head} \cdot H = d_\text{model}$$ obtained from stacking them on top of each other.  The overall attention output is then $$o = W_O R$$, where $$W_O$$ is $$d_\text{model} \times d_\text{model}$$. (Note that we're now *enforcing* the identity $$d_\text{head} = d_\text{model} / H$$, whereas this was just a convention from the additive perspective.)
 
 Why are these the same? We can split up $$W_O$$ into a block matrix $$[W_O^{h_1} \,|\, \dots \,|\, W_O^{h_H}]$$, where each block is of shape $$d_\text{model} \times d_\text{head}$$. Then
 
-$$$
+$$
 W_O R = \left[W_O^{h_1} \,|\, \dots \,|\, W_O^{h_H}\right] \begin{bmatrix} r^{h_1} \\ \vdots \\ r^{h_H} \end{bmatrix} = \sum_{i=1}^H W_O^{h_i} r^{h_i}.
-$$$
+$$
 
 Going forward in this series, we'll stick with the "independent and additive" interpretation, following "Transformer Circuits." But it's important to remember that this *isn't* what you'll see in a typical Transformer implementation.
 
 The end-to-end formula for a full layer of attention is therefore
 
-$$$
+$$
 x^{(1)} = x^{(0)} + \sum_{h=1}^{H} W_O^h W_V^h\,   x^{(0)} \, \text{softmax}^*\bigg( \frac{(x^{(0)})^\top (W_Q^h)^\top W_K^h x^{(0)}} {\sqrt{d_\text{head}}}\bigg)^\top.
-$$$
+$$
 
 ## The multilayer perceptron
 
@@ -384,20 +384,20 @@ But now that we've successfully moved information between tokens, we *can* benef
 
 We start by projecting to a higher dimension $$d_\text{mlp}$$. By convention, $$d_\text{mlp} = 4 \cdot d_\text{model}$$, but there's no special reason to use this value rather than another.
 
-$$$
+$$
 z = \text{ReLU}(W_1 x^{(1)} + b_1)
-$$$
+$$
 
 Here, $$W_1$$ is a $$d_\text{mlp} \times d_\text{model}$$ matrix and $$b_1$$ is a $$d_\text{mlp} \times 1$$ bias vector. Each token position is independently multiplied by $$W_1$$: that is, $$W_1 x^{(1)} = [W_1 x^{(1)}_1, \dots, W_1 x^{(1)}_n]$$.
 
 We then project back down to $$d_\text{model}$$ and add the result to the residual stream:
 
-$$$
+$$
 \begin{align*}
 m &= W_2 z + b_2 \\
 x^{(2)} &= x^{(1)} + m.
 \end{align*}
-$$$
+$$
 
 The MLP is mathematically simple but conceptually more opaque. There's a clear story about how attention moves information between tokens, but the MLP's role is harder to grasp.
 
@@ -421,9 +421,9 @@ For each vector $$x_i$$ in the residual stream, we subtract the mean $$\mu(x_i)$
 
 To sum up, the LayerNorm operation is
 
-$$$
+$$
 \text{LayerNorm}(x) = \frac{x - \mu(x)}{\sigma(x)} \odot \gamma + \beta.
-$$$
+$$
 
 where 
 * $$\odot$$ denotes element-by-element multiplication of two vectors
