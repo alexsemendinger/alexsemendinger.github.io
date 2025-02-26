@@ -193,7 +193,7 @@ Here’s how “Attention is All You Need” summarizes attention:
 
 We'll walk through each of these components in turn.
 
-## Values: What information is being moved?
+## Values: what information is being moved?
 
 Our output is going to be “a weighted sum of the values.” 
 
@@ -203,7 +203,7 @@ We imagine that the embedding (somehow) represents different pieces of informati
 
 Therefore, $$W_V$$ answers the question: "what information are we moving"?
 
-## Queries and Keys: For each previous token, how important is the information in its value?
+## Queries and keys: for each previous token, how important is the information in its value?
 
 Next, we need to compute the weights. These depend on two additional parameter matrices, $$W_Q$$ and $$W_K$$, each of shape $$(d_\text{head}, d_\text{model})$$ (the same shape as $$W_V$$).
 
@@ -213,19 +213,21 @@ Concretely, we compute a **query** from the last token: $$q_n = W_Q x^{(n)}_0$$,
 
 (Why divide by $$\sqrt{d_\text{head}}$$? The short answer is: it's often helpful to keep activations in your neural network at roughly the same scale throughout, and this turns out to be the right scaling value. The semi-formal argument for this is that if the entries of $$q, k$$ are independent random variables with mean $$0$$ and variance $$1$$, then $$q^\top k$$ has mean $$0$$ and variance $$d_\text{head}$$. That means you'll commonly see much larger values! But $$q^\top k / \sqrt{d_\text{head}}$$ has mean $$0$$ and variance $$1$$, which is "on the same scale" as $$q$$ and $$k$$.)
 
+## The weighted sum
+
 In keeping with the idea of keeping activations on the same scale, we'd also like the output of our weighted sum to be on the same scale as the input. One way to do that is to ensure the weights sum to $$1$$, making the weighted sum a weighted *average*. 
 
-Luckily, we already know a function that does just this: softmax! So the weights we'll use (also called the **attention pattern**) are $$a_i = \text{softmax}([s_1, \dots, s_n])$$.
+Luckily, we already know a function that does just this: softmax! So the weights we'll use (also called the **attention pattern**) are $$[a_1, \dots, a_n] = \text{softmax}([s_1, \dots, s_n])$$.
 
 Putting this together, we end up with a "result" vector $$r_n = \sum_i a_i v_i$$: a weighted sum of the values, as promised.
 
 We've now answered question 2: "for each token, how important is the information it's offering?"
 
-## Output: How do we incorporate this information into the representation of the current token?
+## Output: how do we incorporate this information into the representation of the last token?
 
 All that’s left is to project our weighted sum back to the residual stream. We do this via one last matrix multiplication: $$o_n = W_O r_n$$. The matrix $$W_O$$ plays a similar role to $$W_V$$, but in reverse: it picks out which subspace of the residual stream the data in $$r_n$$ will be stored in.
 
-This gets added to the orignal token embedding: $$x^{(1)}_n = x^{(0)}_n + o_n$$.
+This gets added to the orignal last-token embedding: $$x^{(1)}_n = x^{(0)}_n + o_n$$.
 
 ## Unembedding, logits, probabilities
 
@@ -234,7 +236,7 @@ We've reached the end of the residual stream in our tiny one-layer model, so it'
 
 ## The full one-layer, attention-only, just-predicts-the-next-token Transformer
 
-To sum up, here are all the parameters and activations of our simplified one-layer Transformer. Remember that this version is nonstandard: if you want to compare this to a practical Transformer implementation, you should use the tables that appear later.
+To sum up, here are all the parameters and activations of our simplified one-layer Transformer. Remember that this version is nonstandard: if you want a reference for a practical Transformer implementation, you should use the tables that appear later.
 
 | Activation Name   | Expression                                   | Shape                     |
 |-------------------|----------------------------------------------|---------------------------|
@@ -260,7 +262,7 @@ To sum up, here are all the parameters and activations of our simplified one-lay
 | $$W_O$$        | $$d_\text{model} \times d_\text{head}$$ |
 | $$W_U$$        | $$n_\text{vocab} \times d_\text{model}$$ |
 
-# The full one-layer Transformer
+# The complete one-layer Transformer
 
 Our first tour through the attention mechanism described how the *final* token can receive information from all previous tokens in the context. In actual Transformer models, an attention head updates *every* token with information from the tokens preceding it. There are two reasons for this:
 1. In a model with multiple layers of attention, this allows information to take multiple hops between tokens, allowing for richer contextual representatinos and more expressive algorithms. One important algorithm of this type is the [induction head](https://transformer-circuits.pub/2022/in-context-learning-and-induction-heads/index.html), which performs a simple kind of in-context learning.
@@ -270,7 +272,7 @@ In this walkthrough, we'll rewrite the attention mechanism in a way that reflect
 
 ## The attention *matrix*
 
-We'll end up writing the attention mechanism somewhat differently this time around, but the only real difference is that every token will have its own query vector. The rest is bookkeeping (stacking vectors together into matrices).
+We'll end up writing the attention mechanism somewhat differently this time around, matching the notation you'll see in other sources. But the only real difference is that every token will have its own query vector -- everything else is bookkeeping (figuring out the right way to stack vectors to form matrices).
 
 Let's write this out: we compute queries, keys, and values for each token:
 
@@ -278,11 +280,11 @@ $$
 q = W_Q x^{(0)}, \quad k= W_K x^{(0)}, \quad v = W_V x^{(0)}.
 $$
 
-For each query, we computute attention scores based on all the preceding keys: $$s_{ij} = q_i^\top k_j / \sqrt{d_\text{head}}$$ for $$j \leq i$$. And we turn these into weights by taking the softmax: $$a_{i} = \text{softmax}([s_{i1}, s_{i2}, \dots, s_{ii}])$$. (Note that $$a_i$$ is now an $$i$$-dimensional vector, with components $$a_{ij}$$.)
+For each query, we computute attention scores based on all the preceding keys: $$s_{ij} = q_i^\top k_j / \sqrt{d_\text{head}}$$ for $$j \leq i$$. And we turn these into weights by taking the softmax: $$a_i = \text{softmax}([s_{i1}, s_{i2}, \dots, s_{ii}])$$. (Note that $$a_i$$ is now an $$i$$-dimensional vector: $$a_i = [a_{i1}, \dots, a_{ii}]$$.)
 
 Finally, we compute our result $$r_i = \sum_{j=1}^i a_{ij} v_j$$ and our output $$o_i = W_O r_i$$, which is added to $$x^{(0)}_i$$ in the residual stream.
 
-The double indices in $$s_{ij}$$ and $$a_{ij}$$ indicate that it might be natural to write these as matrices. And indeed, this is usually how they're presented. It makes sense to write the whole attention pattern out first (setting $$n = 4$$ so it's easy to visualize):
+The double indices in $$s_{ij}$$ and $$a_{ij}$$ indicate that it might be natural to write these as matrices. And indeed, this is how they're usually presented. It makes sense to write the whole attention pattern out first (setting $$n = 4$$ so it's easy to visualize):
 
 $$
 A = \begin{bmatrix}
@@ -293,14 +295,16 @@ a_{41} & a_{42} & a_{43} & a_{44}
 \end{bmatrix}
 $$
 
-In order to write this as a square matrix, we've set $$a_{ij} = 0$$ when $$j > i$$. This allows us to write $$r_i = \sum_{j=1}^n a_{ij} v_j$$ (summing up to $$j=n$$ rather than stopping at $$j=i$$), since the additional terms don't contribute anything.
+In order to write this as a square matrix, we've set $$a_{ij} = 0$$ when $$j > i$$. This allows us to write $$r_i = \sum_{j=1}^n a_{ij} v_j$$ (summing up to $$j=n$$ rather than stopping at $$j=i$$), since the additional terms don't contribute anything.[^4]
+
+[^4]: The notation can be a bit confusing here. Remember that $$a_{ij}$$ are scalars, but each $$v_j$$ is a **vector** of size $$d_\text{head}$$. This means $$r_i = \sum_{j=1}^n a_{ij} v_j$$ is also a vector of size $$d_\text{head}$$. 
 
 It might not be obvious how to write the full matrix of attention *scores*. Again, we've only defined the lower-triangular portion of the matrix. But we want it to have the property that if you take the softmax of each row, you get the corresponding row of $$A$$. That is, we need to pad each row with a value that serves as an identity for softmax, the same way that $$0$$ serves as an identity for addition.
 
 Let's look at a concrete example of softmax to figure out what this should be:
 
 $$
-\text{softmax}([1, 2]) = \bigg[\frac{e}{e + e^2}, \frac{e^2}{e + e^2}\bigg] \approx
+\text{softmax}([1, 2]) = \bigg[\frac{e^1}{e^1 + e^2}, \frac{e^2}{e^1 + e^2}\bigg] \approx
 [0.269, 0.731]
 $$
 
@@ -416,7 +420,7 @@ There's one last component in a Transformer, which I've so far left out because 
 
 At a few points, we've seen that it's useful to keep activations "on the same scale" throughout the network. This explains both the $$\sqrt{d_\text{head}}$$ factor and the softmax when computing the attention pattern, for instance. LayerNorm is similar, ensuring that the inputs to each attention and MLP layer are a consistent size.
 
-For each vector $$x_i$$ in the residual stream, we subtract the mean $$\mu(x_i)$$ and divide by the standard deviation $$\sigma(x_i)$$ of the entries. The elements of the resulting vector have mean $$0$$ and variance $$1$$. We then shift and scale to produce a vector whose entries have mean $$\beta$$ and standard deviation $$\gamma$$, where $$\beta, \gamma$$ are learned parameters of size $$d_\text{model}$$, similar to model weights.
+For each vector $$x_i$$ in the residual stream, we subtract the mean $$\mu(x_i)$$ and divide by the standard deviation $$\sigma(x_i)$$ of the entries. The elements of the resulting vector have mean $$0$$ and variance $$1$$. We then shift and scale to produce a vector whose entries have mean $$\beta$$ and standard deviation $$\gamma$$, where $$\beta, \gamma$$ are learned parameters of size $$d_\text{model}$$, similar to model weights. Each instance of LayerNorm will have its own learned values of $$\beta$$ and $$\gamma$$.
 
 To sum up, the LayerNorm operation is
 
