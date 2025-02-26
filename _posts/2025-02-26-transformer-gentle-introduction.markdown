@@ -149,7 +149,7 @@ $$
 $$
 
 There are a number of reasons this is a nice choice, but the most important are:
-1. For any value of $$x$$, $$e^x$$ is positive, so each entry in $$\text{softmax}(x)$$ is positive.
+1. $$e^{x_i}$$ is always positive, so each entry in $$\text{softmax}(x)$$ is positive.
 2. The sum of the entries in $$\text{softmax}(x)$$ is $$(\sum_{i=1}^n e^{x_i}) / (\sum_{i=1}^n e^{x_i}) = 1$$.
 
 That is: for any input $$x$$, we can interpret $$\text{softmax}(x)$$ as a probability distribution, just like we wanted!
@@ -161,7 +161,7 @@ $$
 
 The $$k$$-th entry of this output vector is the probability that the model assigns to the token with index $$k$$ appearing next.
 
-Of course, we still haven't left the "processing tokens individually" stage, so the best we can hope for here is for the model to encode (say it with me) *bigram statistics*. "Transformer Circuits" reports observing this in practice:
+Of course, we still haven't left the "processing tokens individually" stage, so the best we can hope for here is for the model to encode (say it with me) *bigram statistics*. The "Transformer Circuits" paper confirms that this is what the model learns:
 
 > In particular, the $$W_U W_E$$ term seems to often help represent bigram statistics which aren't described by more general grammatical rules, such as the fact that "Barack" is often followed by "Obama".
 
@@ -169,17 +169,17 @@ So far, not very interesting. I promised there would be information movement! We
 
 # A simplified one-layer Transformer
 
-The simplest model that deserves to be called a Transformer has a layer of **attention** in between the embedding and unembedding. 
+The simplest model that deserves to be called a Transformer has a layer of **attention** in between the embedding and unembedding. Schematically, it looks like this:
 
 $$
 \begin{align*}
 x^{(0)} &= W_E t + W_\text{pos} & \text{(embedding)} \\
-x^{(1)}_n &= x^{(0)}_n + \text{Attn}(x^{(0)}_1, \dots, x^{(0)}_n) & \text{(add attention result)} \\
+x^{(1)}_n &= x^{(0)}_n + \text{Attention}(x^{(0)}_1, \dots, x^{(0)}_n) & \text{(add attention result)} \\
 T(t) &= \text{softmax}(W_Ux^{(1)}_n) & \text{(unembedding)}
 \end{align*}
 $$
 
-Note that this is a **residual connection**: rather than setting $$x^{(1)} = \text{Attn}(x^{(0)}_1, \dots, x^{(0)}_n)$$ directly, the attention output is *added* to the original embedding $$x^{(0)}_n$$. 
+Note that this is a **residual connection**: rather than setting $$x^{(1)} = \text{Attention}(x^{(0)}_1, \dots, x^{(0)}_n)$$ directly, the attention output is *added* to the original embedding $$x^{(0)}_n$$. 
 
 In fact, every layer of a Transformer uses residual connections. Because of this, it's helpful to imagine the original embedding $$x^{(0)}$$ "flowing through" the network, with each successive layer adding small updates to it. For this reason (following the terminology from "Transformer Circuits"), we'll say the vectors $$x^{(\ell)}_i$$ at each layer $$\ell$$ are in the **residual stream**.
 
@@ -197,7 +197,7 @@ We'll walk through each of these components in turn.
 
 Our output is going to be “a weighted sum of the values.” 
 
-These values (along with the keys and queries) live in a $$d_{\text{head}}$$-dimensional space, where $$d_{\text{head}}$$ is smaller than $$d_{\text{model}}$$ (in GPT-2, it's 64, compared to $$d_\text{model} = 768$$). We compute the values by multiplying the embedding by a $$d_{\text{head}} \times d_{\text{model}}$$ matrix $$W_V$$: that is, $$v_i = W_V x_i^{(0)}$$.
+These values (along with the keys and queries) live in a $$d_{\text{head}}$$-dimensional space, where $$d_{\text{head}}$$ is smaller than $$d_{\text{model}}$$ (in GPT-2, it's 64, compared to $$d_\text{model} = 768$$). We compute the values by multiplying the embedding by a $$d_{\text{head}} \times d_{\text{model}}$$ matrix $$W_V$$. That is, $$v_i = W_V x_i^{(0)}$$.
 
 We imagine that the embedding (somehow) represents different pieces of information in different subspaces of the residual stream. We can then think of a projection as picking out a certain subspace to use in this attention head -- that is, picking out certain information from each token to be included in our weighted sum.
 
@@ -381,13 +381,13 @@ But now that we've successfully moved information between tokens, we *can* benef
 
 [^5]: $$\text{ReLU}(x) = \max(x, 0)$$ is a common nonlinearity for MLPs, but Transformers more commonly use the "Gaussian error linear unit" or GELU, defined as $$\text{GELU}(x) = x \cdot \Phi(x)$$ where $$\Phi(x)$$ is the cumulative distribution function of the standard Gaussian. You can [read more about GELU here](https://simplicityissota.substack.com/p/the-rise-of-gelu); the distinction is too subtle to be important for our discussion.
 
-We start by projecting to a higher dimension $$d_\text{mlp}$$. By convention, $$d_\text{mlp} = 4 \cdot d_\text{model}$$, but there's no special reason to use this value rather than another.
+We start by projecting to a higher dimension $$d_\text{mlp}$$. A common convention is to set $$d_\text{mlp} = 4 \cdot d_\text{model}$$, but there's no special reason to use this value rather than another.
 
 $$
 z = \text{ReLU}(W_1 x^{(1)} + b_1)
 $$
 
-Here, $$W_1$$ is a $$d_\text{mlp} \times d_\text{model}$$ matrix and $$b_1$$ is a $$d_\text{mlp} \times 1$$ bias vector. Each token position is independently multiplied by $$W_1$$: that is, $$W_1 x^{(1)} = [W_1 x^{(1)}_1, \dots, W_1 x^{(1)}_n]$$.
+Here, $$W_1$$ is a $$d_\text{mlp} \times d_\text{model}$$ matrix and $$b_1$$ is a $$d_\text{mlp} \times 1$$ bias vector. Each token position is independently multiplied by $$W_1$$. That is, $$W_1 x^{(1)} = [W_1 x^{(1)}_1, \dots, W_1 x^{(1)}_n]$$.
 
 We then project back down to $$d_\text{model}$$ and add the result to the residual stream:
 
