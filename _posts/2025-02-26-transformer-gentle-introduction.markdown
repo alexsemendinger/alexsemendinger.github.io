@@ -263,7 +263,7 @@ To sum up, here are all the parameters and activations of our simplified one-lay
 # The full one-layer Transformer
 
 Our first tour through the attention mechanism described how the *final* token can receive information from all previous tokens in the context. In actual Transformer models, an attention head updates *every* token with information from the tokens preceding it. There are two reasons for this:
-1. In a model with multiple layers of attention, this allows for information to make multiple hops between tokens. This allows for richer contextual representations and more complicated algorithms. In part 3 of this series, we'll see an especially important simple example in *induction heads*.
+1. In a model with multiple layers of attention, this allows information to take multiple hops between tokens, allowing for richer contextual representatinos and more expressive algorithms. One important algorithm of this type is the [induction head](https://transformer-circuits.pub/2022/in-context-learning-and-induction-heads/index.html), which performs a simple kind of in-context learning.
 2. When *training* a Transformer, next-token probabilities are computed for every position simultaneously and compared to the actual next tokens that appear in the sequence. This is a huge efficiency improvement: when processing a sequence with $$n$$ tokens, this means you get $$n$$ pieces of feedback rather than just one.
 
 In this walkthrough, we'll rewrite the attention mechanism in a way that reflects this, and also add in the second (simpler) piece of a Transformer block: the multilayer perceptron (MLP) layer.
