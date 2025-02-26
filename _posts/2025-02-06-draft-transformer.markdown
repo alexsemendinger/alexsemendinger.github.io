@@ -1,13 +1,13 @@
 ---
 layout: post
-title:  "Draft of Transformers Post"
-date:   2025-02-06 13:21:13 -0500
+title:  "A Gentle Introduction to Transformers"
+date:   2025-02-26 13:21:13 -0500
 categories: transformers
 ---
 
 # A Gentle Introduction to Transformers
 
-# DRAFT 
+**Draft, work in progress. Feedback welcomed on [this Google Doc (equations don't display)](https://docs.google.com/document/d/1aLBG-SPTOHepFRa5gfcLGPvFx5MpWx8mo8ncjqXIQ-g/edit?usp=sharing)**.
 
 # Introduction
 
