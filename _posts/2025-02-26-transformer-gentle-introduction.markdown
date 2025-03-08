@@ -6,8 +6,6 @@ categories: transformers
 permalink: /transformers-gentle-introduction
 ---
 
-**Draft, work in progress. Feedback welcomed on [this Google Doc (equations won't display)](https://docs.google.com/document/d/1aLBG-SPTOHepFRa5gfcLGPvFx5MpWx8mo8ncjqXIQ-g/edit?usp=sharing)**.
-
 # Introduction
 
 The internet is blessed with an abundance of high-quality blog posts explaining how Transformers work. Some of my favorites are:
@@ -481,6 +479,8 @@ To close, here's an updated version of our earlier chart of Transformer activati
 | MLP            | $$W_1, b_1$$             | $$d_\text{mlp} \times d_\text{model}$$, &nbsp; $$d_\text{mlp}$$  |
 | MLP            | $$W_2, b_2$$             | $$d_\text{model} \times d_\text{mlp}$$, &nbsp; $$d_\text{model}$$ |
 | Unembedding    | $$W_U$$                  | $$n_\text{vocab} \times d_\text{model}$$        |
+
+Thanks for reading! Feedback is welcomed on [this Google Doc (equations won't display)](https://docs.google.com/document/d/1aLBG-SPTOHepFRa5gfcLGPvFx5MpWx8mo8ncjqXIQ-g/edit?usp=sharing) or by email at alex.semendinger@gmail.com.
 
 
 # Appendix: Key figures in several LLMs 
