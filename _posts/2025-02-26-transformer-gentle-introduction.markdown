@@ -6,6 +6,19 @@ categories: transformers
 permalink: /transformers-gentle-introduction
 ---
 
+<!-- 
+Two ways that *work* to include images.
+(The default copy-paste doesn't work.)
+Note that you should put them in /assets/images
+
+![alt text](/assets/images/image.png)
+
+<figure class="image-container">
+  <img src="{{ site.baseurl }}/assets/images/image.png" alt="Image description" class="responsive-image">
+  <figcaption>Your image caption here</figcaption>
+</figure> 
+-->
+
 # Introduction
 
 The internet is blessed with an abundance of high-quality blog posts explaining how Transformers work. Some of my favorites are:
@@ -31,6 +44,7 @@ In keeping with the *gentle introduction* theme, we then walk through the attent
 
 We'll close by briefly discussing MLPs and LayerNorm, which are the other main components of a Transformer.
 
+
 # Warmup: a hypothetical language model
 
 (If you want to get right to Transformers, you can skip to ["What's in a Transformer"](#whats-in-a-transformer) below)
@@ -40,6 +54,8 @@ Before getting into the computational details of Transformers, it might help to 
 Here's what we know about our model:
 * Inputs: a sequence of tokens $$t_1, \dots, t_n$$. Each token represents roughly one word in a sentence.[^1] 
 * Outputs: a probability distribution over possible next tokens in the sentence.
+
+![A diagram of a probabilistic language model: A blue box containing input text has an arrow pointing to a red box showing a list of words, each with a probability.](tf1-warmup-input-to-probs.png)
 
 [^1]: To get a sense for how "tokenization" works, I recommend playing with [Tiktokenizer](https://tiktokenizer.vercel.app/), which illustrates how various language models split text into tokens. For more technical details on tokenization, I recommend [this post](https://christophergs.com/blog/understanding-llm-tokenization).
 
@@ -51,6 +67,8 @@ For example, if you input `"The Empire State Building is in New"`, a good model 
 ## Bigrams
 
 One model that fits this description is a lookup table of **bigram statistics**: for each pair of tokens, this tells you the frequency with which the second follows the first (say, in some large text corpus). If you throw away the information from tokens $$t_1, \dots, t_{n-1}$$ and just use $$t_n$$, this is the best you can do.
+
+![A diagram of a bigram language model. The final token of the input text is used to predict a probability distribution over possible next tokens.](tf1-warmup-bigrams1.png)
 
 Of course, this is a terrible way to generate text.
 
@@ -64,6 +82,8 @@ You could do a bit better by looking at $$n$$\-grams for larger values of $$n$$,
 * Any individual $$n$$\-gram becomes vanishingly rare in the data (it’s easy to write a 10-word phrase that has never been written before).
 * The model can’t use any information that appeared more than $$n$$ tokens ago.
 
+**[TODO IMAGE: modify bigram image to n-gram image]**
+
 [^3]:  Although see [https://infini-gram.io/](https://infini-gram.io/) which uses some clever tricks to approximate $$n$$-grams for arbitrary values of $$n$$ (and which is the source of the $$n$$-gram example sentences). Despite its impressiveness, it’s not useful as an autoregressive model.
 
 For situations where $$n$$-grams are appropriate, there are more sophisticated ways to work around the first two problems, but the extremely limited context window is a hard constraint.
@@ -72,7 +92,12 @@ For situations where $$n$$-grams are appropriate, there are more sophisticated w
 
 To avoid the issues with $$n$$-grams, we’ll add a constraint to our (still hypothetical) model: the model can "process" each token in some way, but the final prediction will depend solely on the processed version of the final token $$t_n$$.
 
-There's no benefit to processing each token independently, in isolation: in that case, you still can't beat bigram statistics. So if we want to do better, we’ll have to *find a way for the other tokens in the context to modify the model's version of $$t_n$$*. 
+There's no benefit to processing each token independently, in isolation: in that case, you still can't beat bigram statistics. 
+
+![A modified version of the bigram language model diagram above. In this diagram, the model performs additional "processing" on each token. However, the output is still purely a function of the final token, so the behavior is not fundamentally changed.](tf1-warmup-bigrams-with-processing.png)
+
+
+So if we want to do better, we’ll have to *find a way for the other tokens in the context to modify the model's version of $$t_n$$*.
 
 The picture you should have in mind is this: whatever it means for the model to “process” a token, it should involve some representation of the information the token conveys. If a model is able to string together grammatical sentences, then some part of the model must be able to determine (at least implicitly) whether a given word is a noun, verb, or adjective. More advanced models will need to encode much more information: if you mention a city, it should determine what language is spoken there and what the famous landmarks are. If you mention an object, it should be able to say how big it is, whether it has a standard color, and what it's made of.
 
@@ -93,6 +118,10 @@ This is a lot to keep track of for such a simple sentence! But somehow, modern l
 ## Moving information around
 
 Above, I said we want to "find a way for the other tokens in the context to modify the model's version of $$t_n$$." We can rephrase this as: we want to be able to *move information* from earlier tokens to the last token.
+
+![Another modification to the bigram model. Now each input token influences the value of the "processed" version of all subsequent input tokens. As a result, the output is a function of all the input tokens, not just the final token.](tf1-warmup-info-movement-1.png)
+
+**[TODO: i'm not sure this breakdown of "information movement" is all that helpful -- maybe redo]**
 
 So at least part of the "processing" done by the model should be understood as "information movement." We’ll break this down into three questions:
 
@@ -118,7 +147,11 @@ You shouldn't be surprised to hear that these are exactly the ingredients of a G
 
 Here's where the math begins.
 
-GPT-2 Small, which will be our running reference example, has a vocabulary size of 50,257 tokens (we'll call this $$n_{\text{vocab}}$$). Each token $$t_i$$ is represented first as a "one-hot" vector: e.g. the token with index -24 is represented by a vector of length 50,257 consisting of a $$1$$ in position 324 and zeros elsewhere. We'll bundle all these one-hot-encoded tokens together as the columns of an $$n_\text{vocab} \times n$$ matrix $$t = [t_1, \dots, t_n]$$, which will serve as our input.
+GPT-2 Small, which will be our running reference example, has a vocabulary size of 50,257 tokens (we'll call this $$n_{\text{vocab}}$$). Each token $$t_i$$ is represented first as a "one-hot" vector: e.g. the token with index -24 is represented by a vector of length 50,257 consisting of a $$1$$ in position 324 and zeros elsewhere. We'll bundle all these one-hot-encoded tokens together as the **columns** of an $$n_\text{vocab} \times n$$ matrix $$t = [t_1, \dots, t_n]$$, which will serve as our input.
+
+(This is somewhat non-standard: conventionally, the input matrix will be $$n \times n_\text{vocab}$$ with the tokens as *rows*, not columns. This non-standard choice will simplify some mathematical expressions later on.)
+
+![A diagram illustrating how the input to a Transformer is constructed. Tokens are assigned indices, which are represented by one-hot vectors. The one-hot vectors form the columns of the input matrix.](tf1-zerolayer-input.png)
 
 Fifty thousand dimensions  is a lot to work with, so the first thing the model does is **embed** the tokens into a lower-dimensional space of size $$d_{\text{model}}$$. In GPT-2, $$d_{\text{model}} = 768$$.
 
@@ -137,6 +170,9 @@ Putting the token and positional embeddings together, we have the "level-zero re
 $$
 x^{(0)} = W_E t + W_\text{pos}.
 $$
+
+![Tokens to embedding: the embedding matrix W_E multiplies the token matrix t, and the positional embedding matrix W_pos is added. The result is x^0.](tf1-zerolayer-full-embedding.png)
+
 
 ## Unembedding
 
@@ -159,6 +195,8 @@ $$
 
 The $$k$$-th entry of this output vector is the probability that the model assigns to the token with index $$k$$ appearing next.
 
+![An overview of the "zero layer" Transformer: The input matrix t is embedded to produce x^0. This passes through the unembedding to produce logits, which in turn are processed to produce probabilities.](tf1-zerolayer-overview.png)
+
 Of course, we still haven't left the "processing tokens individually" stage, so the best we can hope for here is for the model to encode (say it with me) *bigram statistics*. The "Transformer Circuits" paper confirms that this is what the model learns:
 
 > In particular, the $$W_U W_E$$ term seems to often help represent bigram statistics which aren't described by more general grammatical rules, such as the fact that "Barack" is often followed by "Obama".
@@ -167,7 +205,11 @@ So far, not very interesting. I promised there would be information movement! We
 
 # A simplified one-layer Transformer
 
-The simplest model that deserves to be called a Transformer has a layer of **attention** in between the embedding and unembedding. Schematically, it looks like this:
+**[TODO: PROOFREAD, REWRITTEN]**
+
+The simplest model that deserves to be called a Transformer has a layer of **attention** in between the embedding and unembedding. We'll first look at a simplified version of attention that nonetheless operates identically in the special case of a one-layer model.
+
+Schematically, here is the simplified one-layer Transformer we'll be walking through:
 
 $$
 \begin{align*}
@@ -177,19 +219,31 @@ T(t) &= \text{softmax}(W_Ux^{(1)}_n) & \text{(unembedding)}
 \end{align*}
 $$
 
-Note that this is a **residual connection**: rather than setting $$x^{(1)} = \text{Attention}(x^{(0)}_1, \dots, x^{(0)}_n)$$ directly, the attention output is *added* to the original embedding $$x^{(0)}_n$$. 
+![A modified version of the previous diagram: now, after tokens are embedded, an "attention output" o is produced from x^0. x^0 and o are combined to produce x^1, which is unembedded to produce logits and probabilities. Together, x^0 and x^1 make up the "residual stream."](tf1-onelayersimple-overview.png)
+
+There are two important things to note about this operation. First, this is a **residual connection**: rather than setting $$x^{(1)} = \text{Attention}(x^{(0)}_1, \dots, x^{(0)}_n)$$ directly, the attention output is *added* to the original embedding $$x^{(0)}_n$$. 
 
 In fact, every layer of a Transformer uses residual connections. Because of this, it's helpful to imagine the original embedding $$x^{(0)}$$ "flowing through" the network, with each successive layer adding small updates to it. For this reason (following the terminology from "Transformer Circuits"), we'll say the vectors $$x^{(\ell)}_i$$ at each layer $$\ell$$ are in the **residual stream**.
 
-The actual workings of the attention function aren't so bad -- it's just a few matrix multiplications and another application of softmax -- but it's not obvious at first *why* we'd do them. So as we walk through the operations below, remember that attention is providing the "information movement" services that we want: what information should we take from each token, how relevant is each bit to the last token, and how do we incorporate the relevant pieces of information into an updated representation of the last token?
+Second, while every token is represented in the input matrix $$t$$ and the first embedding matrix $$x^{(0)}$$, the output of this simplified version of attention only involves the *final* token embedding $$x^{(1)}_n$$ -- because the next-token logits are the result of applying the unembedding to the final token in the residual stream.
 
-The presentation here will be slightly nonstandard: in the special case of a one-layer Transformer, all we need to know is how the final token embedding $$x^{(0)}_n$$ is modified by the attention mechanism. (We'll see the standard version later, in which *every* token embedding gets modified simultaneously.)
+This simplification will make the direction of information movement clearer: every token is a *source* of information, but only the last token is *receiving* information.
+
+The full version of attention, which we'll see later, will update all tokens at once: every token will both send information (to later tokens) and receive information (from previous tokens). When we leave the one-layer regime, this becomes very important.
+
+**[END OF TODO: PROOFREAD, REWRITTEN]**
+
+The actual workings of the attention function aren't so bad -- it's just a few matrix multiplications and another application of softmax -- but it's not obvious at first *why* we'd do them. So as we walk through the operations below, remember that attention is providing the "information movement" services that we want: what information should we take from each token, how relevant is each bit to the last token, and how do we incorporate the relevant pieces of information into an updated representation of the last token?
 
 Here’s how “Attention is All You Need” summarizes attention:  
 
 > An attention function can be described as mapping a **query** and a set of **key-value pairs** to an **output** .... The output is computed as a **weighted sum of the values**, where the weight assigned to each value is computed by a compatibility function of the query with the corresponding key.
 
-We'll walk through each of these components in turn.
+**[TODO: incorporate this better]**
+
+Here's a diagram illustrating the attention mechanism, which we'll walk through piece by piece.
+
+![A diagram illustraing the simplified attention mechanism which only updates the last token embedding. Every token has an associated key and value, and the final token has an associated query. The keys combine with the query to compute scores, which result in attention weights after a softmax operation. A weighted sum of the values is computed, using the attention weights. This result is projected back into the residual stream to produce the attention output.](tf1-onelayersimple-attention.png)
 
 ## Values: what information is being moved?
 
@@ -207,7 +261,7 @@ Next, we need to compute the weights. These depend on two additional parameter m
 
 We want these weights to represent how much each previous token should inform our prediction of the next token. To figure this out, we extract some information from $$x^{(0)}_n$$, some other information from $$x^{(0)}_1, \dots, x^{(0)}_n$$, and compute a compatibility function between the two.
 
-Concretely, we compute a **query** from the last token: $$q_n = W_Q x^{(n)}_0$$, as well as **keys** $$k_i = W_K x^{(0)}_i$$ for every token in the context (including $$x^{(0)}_n$$). The compatibility function is the dot product: $$q_n^\top k_i$$. For numerical stability reasons, you additionally divide by the square root of the head dimension, giving us **attention scores** $$s_i = q_n^\top k_i / \sqrt{d_\text{head}}$$.
+Concretely, we compute a **query** from the last token: $$q_n = W_Q x^{(0)}_n$$, as well as **keys** $$k_i = W_K x^{(0)}_i$$ for every token in the context (including $$x^{(0)}_n$$). The compatibility function is the dot product: $$q_n^\top k_i$$. For numerical stability reasons, you additionally divide by the square root of the head dimension, giving us **attention scores** $$s_i = q_n^\top k_i / \sqrt{d_\text{head}}$$.
 
 (Why divide by $$\sqrt{d_\text{head}}$$? The short answer is: it's often helpful to keep activations in your neural network at roughly the same scale throughout, and this turns out to be the right scaling value. The semi-formal argument for this is that if the entries of $$q, k$$ are independent random variables with mean $$0$$ and variance $$1$$, then $$q^\top k$$ has mean $$0$$ and variance $$d_\text{head}$$. That means you'll commonly see much larger values! But $$q^\top k / \sqrt{d_\text{head}}$$ has mean $$0$$ and variance $$1$$, which is "on the same scale" as $$q$$ and $$k$$.)
 
@@ -262,13 +316,23 @@ To sum up, here are all the parameters and activations of our simplified one-lay
 
 # The complete one-layer Transformer
 
+**[TODO: new, proofread]**
+
+The main unit of a Transformer model is the **Transformer block**, which is composed of an attention layer and a *multilayer perceptron* (MLP) layer, along with some normalization. To complete the walkthrough of Transformers, we'll explain
+* the full version of attention, in which every token is updated (not just the last)
+* the MLP layers
+* the normalization steps (LayerNorm).
+
+![TODO: alt text](tf1-fullonelayer-transformer-block)
+
+**[end todo]**
+
+
+## The attention *matrix*
+
 Our first tour through the attention mechanism described how the *final* token can receive information from all previous tokens in the context. In actual Transformer models, an attention head updates *every* token with information from the tokens preceding it. There are two reasons for this:
 1. In a model with multiple layers of attention, this allows information to take multiple hops between tokens, allowing for richer contextual representatinos and more expressive algorithms. One important algorithm of this type is the [induction head](https://transformer-circuits.pub/2022/in-context-learning-and-induction-heads/index.html), which performs a simple kind of in-context learning.
 2. When *training* a Transformer, next-token probabilities are computed for every position simultaneously and compared to the actual next tokens that appear in the sequence. This is a huge efficiency improvement: when processing a sequence with $$n$$ tokens, this means you get $$n$$ pieces of feedback rather than just one.
-
-In this walkthrough, we'll rewrite the attention mechanism in a way that reflects this, and also add in the second (simpler) piece of a Transformer block: the multilayer perceptron (MLP) layer.
-
-## The attention *matrix*
 
 We'll end up writing the attention mechanism somewhat differently this time around, matching the notation you'll see in other sources. But the only real difference is that every token will have its own query vector -- everything else is bookkeeping (figuring out the right way to stack vectors to form matrices).
 
@@ -278,7 +342,7 @@ $$
 q = W_Q x^{(0)}, \quad k= W_K x^{(0)}, \quad v = W_V x^{(0)}.
 $$
 
-For each query, we computute attention scores based on all the preceding keys: $$s_{ij} = q_i^\top k_j / \sqrt{d_\text{head}}$$ for $$j \leq i$$. And we turn these into weights by taking the softmax: $$a_i = \text{softmax}([s_{i1}, s_{i2}, \dots, s_{ii}])$$. (Note that $$a_i$$ is now an $$i$$-dimensional vector: $$a_i = [a_{i1}, \dots, a_{ii}]$$.)
+For each query, we compute attention scores based on all the preceding keys: $$s_{ij} = q_i^\top k_j / \sqrt{d_\text{head}}$$ for $$j \leq i$$. And we turn these into weights by taking the softmax: $$a_i = \text{softmax}([s_{i1}, s_{i2}, \dots, s_{ii}])$$. (Note that $$a_i$$ is now an $$i$$-dimensional vector: $$a_i = [a_{i1}, \dots, a_{ii}]$$.)
 
 Finally, we compute our result $$r_i = \sum_{j=1}^i a_{ij} v_j$$ and our output $$o_i = W_O r_i$$, which is added to $$x^{(0)}_i$$ in the residual stream.
 
@@ -435,6 +499,8 @@ Empirically, LayerNorm seems to speed up training and might have other performan
 
 
 ## Summing up
+
+**[TODO: I don't think I ever talk about two layers of attention! I'm not sure quite how, but it seems like I leave this hanging and should address it.]**
 
 A full Transformer model consists of an embedding, several Transformer blocks, and an unembedding.
 
