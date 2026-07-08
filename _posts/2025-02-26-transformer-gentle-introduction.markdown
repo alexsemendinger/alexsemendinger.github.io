@@ -323,7 +323,7 @@ The main unit of a Transformer model is the **Transformer block**, which is comp
 * the MLP layers
 * the normalization steps (LayerNorm).
 
-![TODO: alt text](tf1-fullonelayer-transformer-block)
+![A diagram of a full Transformer block acting on the residual stream. One-hot encoded tokens t are embedded to produce x^(0), which enters the residual stream. A LayerNorm applied to x^(0) gives x_LN^(0), which feeds the attention layer; its output o is added back into the residual stream to produce x^(1). A second LayerNorm gives x_LN^(1), which feeds an MLP whose output m is added back to produce x^(2). Finally x^(2) is unembedded into next-token logits l and then next-token probabilities p. A legend shows that blue boxes have shape n_vocab by n and yellow boxes have shape d_model by n.](/assets/images/tf1-fullonelayer-transformer-block.png)
 
 **[end todo]**
 
