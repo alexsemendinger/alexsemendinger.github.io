@@ -61,7 +61,7 @@ Here's what we know about our model:
 
 For example, if you input `"The Empire State Building is in New"`, a good model would assign nearly 100% probability to `"York"` and ~zero probability to every other token. On the other hand, for the input `"The state of New"`, the model should assign some probability to `"York"`, but also a lot to `"Jersey"`, `"Mexico"`, `"Zealand"`, `"Hampshire"`, etc.[^2]
 
-[^2]: When I tried this on a real language model, there were also surprisingly high probabilties on `"California"` (due in part to the *Fallout* video games) and `"Austin"` (due to *Red Dead Redemption*).
+[^2]: When I tried this on a real language model, there were also surprisingly high probabilities on `"California"` (due in part to the *Fallout* video games) and `"Austin"` (due to *Red Dead Redemption*).
 
 
 ## Bigrams
@@ -77,14 +77,12 @@ Prompt: Bigram language models
 Output: Bigram language models. The first time. The first time.
 ```
 
-You could do a bit better by looking at $$n$$\-grams for larger values of $$n$$, i.e. computing the most likely next token given the previous $$n$$ tokens. This quickly becomes impractical for a variety of reasons. To name a few: 
-* The size of the lookup table grows exponentially with $$n$$.[^3]
+You could do a bit better by looking at $$n$$\-grams for larger values of $$n$$, i.e. computing the most likely next token given the previous $$n-1$$ tokens. This quickly becomes impractical for a variety of reasons. To name a few: 
+* The size of the lookup table grows exponentially with $$n$$.
 * Any individual $$n$$\-gram becomes vanishingly rare in the data (it’s easy to write a 10-word phrase that has never been written before).
-* The model can’t use any information that appeared more than $$n$$ tokens ago.
+* The model can’t use any information that appeared more than $$n-1$$ tokens ago.
 
-**[TODO IMAGE: modify bigram image to n-gram image]**
-
-[^3]:  Although see [https://infini-gram.io/](https://infini-gram.io/) which uses some clever tricks to approximate $$n$$-grams for arbitrary values of $$n$$ (and which is the source of the $$n$$-gram example sentences). Despite its impressiveness, it’s not useful as an autoregressive model.
+<!-- [TODO IMAGE: modify bigram image to n-gram image] -->
 
 For situations where $$n$$-grams are appropriate, there are more sophisticated ways to work around the first two problems, but the extremely limited context window is a hard constraint.
 
@@ -121,7 +119,7 @@ Above, I said we want to "find a way for the other tokens in the context to modi
 
 ![Another modification to the bigram model. Now each input token influences the value of the "processed" version of all subsequent input tokens. As a result, the output is a function of all the input tokens, not just the final token.](/assets/images/tf1-warmup-info-movement-1.png)
 
-**[TODO: i'm not sure this breakdown of "information movement" is all that helpful -- maybe redo]**
+<!-- [TODO: i'm not sure this breakdown of "information movement" is all that helpful - maybe redo] -->
 
 So at least part of the "processing" done by the model should be understood as "information movement." We’ll break this down into three questions:
 
@@ -147,23 +145,25 @@ You shouldn't be surprised to hear that these are exactly the ingredients of a G
 
 Here's where the math begins.
 
-GPT-2 Small, which will be our running reference example, has a vocabulary size of 50,257 tokens (we'll call this $$n_{\text{vocab}}$$). Each token $$t_i$$ is represented first as a "one-hot" vector: e.g. the token with index -24 is represented by a vector of length 50,257 consisting of a $$1$$ in position 324 and zeros elsewhere. We'll bundle all these one-hot-encoded tokens together as the **columns** of an $$n_\text{vocab} \times n$$ matrix $$t = [t_1, \dots, t_n]$$, which will serve as our input.
+GPT-2 Small, which will be our running reference example, has a vocabulary size of 50,257 tokens (we'll call this $$n_{\text{vocab}}$$). Each token $$t_i$$ is represented first as a "one-hot" vector: e.g. the token with index 324 is represented by a vector of length 50,257 consisting of a $$1$$ in position 324 and zeros elsewhere. We'll bundle all these one-hot-encoded tokens together as the **columns** of an $$n_\text{vocab} \times n$$ matrix $$t = [t_1, \dots, t_n]$$, which will serve as our input.
 
 (This is somewhat non-standard: conventionally, the input matrix will be $$n \times n_\text{vocab}$$ with the tokens as *rows*, not columns. This non-standard choice will simplify some mathematical expressions later on.)
 
 ![A diagram illustrating how the input to a Transformer is constructed. Tokens are assigned indices, which are represented by one-hot vectors. The one-hot vectors form the columns of the input matrix.](/assets/images/tf1-zerolayer-input.png)
 
-Fifty thousand dimensions  is a lot to work with, so the first thing the model does is **embed** the tokens into a lower-dimensional space of size $$d_{\text{model}}$$. In GPT-2, $$d_{\text{model}} = 768$$.
+Fifty thousand dimensions is a lot to work with, so the first thing the model does is **embed** the tokens into a lower-dimensional space of size $$d_{\text{model}}$$. In GPT-2, $$d_{\text{model}} = 768$$.
 
 The simplest way to transform a vector from one dimension to another is with a single matrix multiplication, so that's what we do. For each token, we compute the embedding $$W_E t$$, where $$W_E$$ is a $$d_{\text{model}} \times n_{\text{vocab}}$$ matrix. We call $$W_E$$ the **embedding matrix**.
 
-In a trained Transformer, the embeddings already encode a significant amount of information about a token. The [classic example](https://www.technologyreview.com/2015/09/17/166211/king-man-woman-queen-the-marvelous-mathematics-of-computational-linguistics/) is that $$\text{king} - \text{man} + \text{woman} \approx \text{queen}$$. We can think of the $$\text{king} - \text{man}$$ vector as encoding a "royalty direction" in this 768-dimensional space, such that when this direction is added to $$\text{woman}$$, we get the corresponding royal position $$\text{queen}$$.
+In a trained Transformer, the embeddings already encode a significant amount of information about a token. A [result in machine learning folklore](https://www.technologyreview.com/2015/09/17/166211/king-man-woman-queen-the-marvelous-mathematics-of-computational-linguistics/), from pre-Transformer models which used word embeddings, was that $$\text{king} - \text{man} + \text{woman} \approx \text{queen}$$: the $$\text{king} - \text{man}$$ vector encodes a "royalty direction" which, when added to $$\text{woman}$$, gives the corresponding royal position $$\text{queen}$$. These relations don't hold as cleanly in Transformers, but Transformer embeddings encode similar structure.
 
 ## Positional embeddings
 
 In addition to knowing *what* each token represents, it's important for the model to know *where in the context* the token appears. Transformers are often described as operating on sequence data, but they actually operate by default on *sets*: the order of the elements in context doesn't matter by default. That would be an issue for a language model: you can't around move words a sentence in without completely changing its meaning (or rendering it incoherent)!
 
-There are several solutions to this problem. We'll go with the simplest, which is to use **positional embeddings**: a $$d_\text{model} \times n$$ matrix $$W_\text{pos}$$, which is added to the token embeddings $$W_E t$$. This can either be a fixed matrix ([see here for details on the encoding used in the original Transformer paper](https://kazemnejad.com/blog/transformer_architecture_positional_encoding/)) or be learned along with the rest of the model parameters. There's much more to be said about positional embeddings (not to mention other strategies for keeping track of position).
+<!-- [TODO: add a footnote here: "operating on sets" is only exactly true for unmasked attention. A causal mask breaks permutation symmetry all by itself, and decoder-only models with no positional embeddings at all still learn positional information; see Haviv et al. 2022, "Transformer Language Models without Positional Encodings Still Learn Positional Information". (Bonus trivia: the simplified one-layer model later in this post IS exactly permutation-invariant over the prefix tokens.)] -->
+
+There are several solutions to this problem. We'll go with the simplest, which is to use **positional embeddings**: a $$d_\text{model} \times n$$ matrix $$W_\text{pos}$$, which is added to the token embeddings $$W_E t$$. This can either be a fixed matrix ([see here for details on the encoding used in the original Transformer paper](https://kazemnejad.com/blog/transformer_architecture_positional_encoding/)) or be learned along with the rest of the model parameters. (As a learned parameter, $$W_\text{pos}$$ has shape $$d_\text{model} \times n_\text{ctx}$$, where $$n_\text{ctx}$$ is the maximum context length the model supports; an input of length $$n$$ uses the first $$n$$ columns.) There's much more to be said about positional embeddings (not to mention other strategies for keeping track of position).
 
 Putting the token and positional embeddings together, we have the "level-zero representation" of our tokens in the model:
 
@@ -176,7 +176,7 @@ $$
 
 ## Unembedding
 
-The trivial “zero-layer Transformer” immediately maps these token embeddings back to a vector of size $$d_{\text{vocab}}$$ via a $$d_\text{vocab} \times d_\text{model}$$ **unembedding matrix** $$W_U$$. The entries of the resulting vector $$W_U x^{(0)}$$ are called the **logits**. Higher logit values correspond to likelier tokens, but this vector isn't itself a probability distribution: the entries might take any value, and don't sum to 1. To turn the logits into probabilities, we use the *softmax* function, defined by
+The trivial “zero-layer Transformer” immediately maps these token embeddings back to a vector of size $$n_{\text{vocab}}$$ via an $$n_\text{vocab} \times d_\text{model}$$ **unembedding matrix** $$W_U$$. The entries of the resulting vector $$W_U x^{(0)}$$ are called the **logits**. Higher logit values correspond to likelier tokens, but this vector isn't itself a probability distribution: the entries might take any value, and don't sum to 1. To turn the logits into probabilities, we use the *softmax* function, defined by
 
 $$ 
 \text{softmax}(x) = \text{softmax}\left(\begin{bmatrix} x_1 \\ \vdots \\ x_n \end{bmatrix} \right) = \frac{1}{e^{x_1} + \dots + e^{x_n}} \begin{bmatrix} e^{x_1} \\ \vdots \\ e^{x_n}\end{bmatrix}.
@@ -205,7 +205,7 @@ So far, not very interesting. I promised there would be information movement! We
 
 # A simplified one-layer Transformer
 
-**[TODO: PROOFREAD, REWRITTEN]**
+<!-- [TODO: PROOFREAD, REWRITTEN] -->
 
 The simplest model that deserves to be called a Transformer has a layer of **attention** in between the embedding and unembedding. We'll first look at a simplified version of attention that nonetheless operates identically in the special case of a one-layer model.
 
@@ -231,7 +231,7 @@ This simplification will make the direction of information movement clearer: eve
 
 The full version of attention, which we'll see later, will update all tokens at once: every token will both send information (to later tokens) and receive information (from previous tokens). When we leave the one-layer regime, this becomes very important.
 
-**[END OF TODO: PROOFREAD, REWRITTEN]**
+<!-- [END OF TODO: PROOFREAD, REWRITTEN] -->
 
 The actual workings of the attention function aren't so bad -- it's just a few matrix multiplications and another application of softmax -- but it's not obvious at first *why* we'd do them. So as we walk through the operations below, remember that attention is providing the "information movement" services that we want: what information should we take from each token, how relevant is each bit to the last token, and how do we incorporate the relevant pieces of information into an updated representation of the last token?
 
@@ -239,11 +239,11 @@ Here’s how “Attention is All You Need” summarizes attention:
 
 > An attention function can be described as mapping a **query** and a set of **key-value pairs** to an **output** .... The output is computed as a **weighted sum of the values**, where the weight assigned to each value is computed by a compatibility function of the query with the corresponding key.
 
-**[TODO: incorporate this better]**
+<!-- [TODO: incorporate this better] -->
 
 Here's a diagram illustrating the attention mechanism, which we'll walk through piece by piece.
 
-![A diagram illustraing the simplified attention mechanism which only updates the last token embedding. Every token has an associated key and value, and the final token has an associated query. The keys combine with the query to compute scores, which result in attention weights after a softmax operation. A weighted sum of the values is computed, using the attention weights. This result is projected back into the residual stream to produce the attention output.](/assets/images/tf1-onelayersimple-attention.png)
+![A diagram illustrating the simplified attention mechanism which only updates the last token embedding. Every token has an associated key and value, and the final token has an associated query. The keys combine with the query to compute scores, which result in attention weights after a softmax operation. A weighted sum of the values is computed, using the attention weights. This result is projected back into the residual stream to produce the attention output.](/assets/images/tf1-onelayersimple-attention.png)
 
 ## Values: what information is being moved?
 
@@ -279,14 +279,14 @@ We've now answered question 2: "for each token, how important is the information
 
 All that’s left is to project our weighted sum back to the residual stream. We do this via one last matrix multiplication: $$o_n = W_O r_n$$. The matrix $$W_O$$ plays a similar role to $$W_V$$, but in reverse: it picks out which subspace of the residual stream the data in $$r_n$$ will be stored in.
 
-This gets added to the orignal last-token embedding: $$x^{(1)}_n = x^{(0)}_n + o_n$$.
+This gets added to the original last-token embedding: $$x^{(1)}_n = x^{(0)}_n + o_n$$.
 
 ## Unembedding, logits, probabilities
 
-We've reached the end of the residual stream in our tiny one-layer model, so it's time to compute the outputs. We unembed to produce logits $$\ell_{n+1} = W_U x^{(1)}_n$$, which we can then turn into probabiltiies $$p_{n+1} = \text{softmax}(\ell_{n+1})$$. Each of these is a vector of size $$n_\text{vocab}$$, with entries reflecting the probability the model assigns to each possible next token following the input sequence.
+We've reached the end of the residual stream in our tiny one-layer model, so it's time to compute the outputs. We unembed to produce logits $$\ell_{n+1} = W_U x^{(1)}_n$$, which we can then turn into probabilities $$p_{n+1} = \text{softmax}(\ell_{n+1})$$. Each of these is a vector of size $$n_\text{vocab}$$, with entries reflecting the probability the model assigns to each possible next token following the input sequence.
 
 
-## The full one-layer, attention-only, just-predicts-the-next-token Transformer
+## Summary: the full one-layer, attention-only, just-predicts-the-next-token Transformer
 
 To sum up, here are all the parameters and activations of our simplified one-layer Transformer. Remember that this version is nonstandard: if you want a reference for a practical Transformer implementation, you should use the tables that appear later.
 
@@ -303,20 +303,20 @@ To sum up, here are all the parameters and activations of our simplified one-lay
 | Attention output  | $$o_n = W_O r_n$$                            | $$d_\text{model}\times 1$$ |
 | Updated last-token embedding | $$x^{(1)}_n = x_n + o_n$$         | $$d_\text{model}\times 1$$ |
 | Next-token logits | $$\ell_{n+1} = W_U x^{(1)}_n$$               | $$n_\text{vocab}\times 1$$ |
-| Next-token probabilities | $$p_{n+1} = \text{softmax}(\ell_n)$$  | $$n_\text{vocab}\times 1$$ |
+| Next-token probabilities | $$p_{n+1} = \text{softmax}(\ell_{n+1})$$  | $$n_\text{vocab}\times 1$$ |
 
 
 | Parameter Name | Shape                       |
 |----------------|-----------------------------|
 | $$W_E$$        | $$d_\text{model} \times n_\text{vocab}$$ |
-| $$W_\text{pos}$$ | $$d_\text{model} \times n$$ |
+| $$W_\text{pos}$$ | $$d_\text{model} \times n_\text{ctx}$$ |
 | $$W_Q, W_K, W_V$$| $$d_\text{head} \times d_\text{model}$$ |
 | $$W_O$$        | $$d_\text{model} \times d_\text{head}$$ |
 | $$W_U$$        | $$n_\text{vocab} \times d_\text{model}$$ |
 
 # The complete one-layer Transformer
 
-**[TODO: new, proofread]**
+<!-- [TODO: new, proofread] -->
 
 The main unit of a Transformer model is the **Transformer block**, which is composed of an attention layer and a *multilayer perceptron* (MLP) layer, along with some normalization. To complete the walkthrough of Transformers, we'll explain
 * the full version of attention, in which every token is updated (not just the last)
@@ -325,14 +325,16 @@ The main unit of a Transformer model is the **Transformer block**, which is comp
 
 ![A diagram of a full Transformer block acting on the residual stream. One-hot encoded tokens t are embedded to produce x^(0), which enters the residual stream. A LayerNorm applied to x^(0) gives x_LN^(0), which feeds the attention layer; its output o is added back into the residual stream to produce x^(1). A second LayerNorm gives x_LN^(1), which feeds an MLP whose output m is added back to produce x^(2). Finally x^(2) is unembedded into next-token logits l and then next-token probabilities p. A legend shows that blue boxes have shape n_vocab by n and yellow boxes have shape d_model by n.](/assets/images/tf1-fullonelayer-transformer-block.png)
 
-**[end todo]**
+<!-- [end todo] -->
 
 
 ## The attention *matrix*
 
 Our first tour through the attention mechanism described how the *final* token can receive information from all previous tokens in the context. In actual Transformer models, an attention head updates *every* token with information from the tokens preceding it. There are two reasons for this:
-1. In a model with multiple layers of attention, this allows information to take multiple hops between tokens, allowing for richer contextual representatinos and more expressive algorithms. One important algorithm of this type is the [induction head](https://transformer-circuits.pub/2022/in-context-learning-and-induction-heads/index.html), which performs a simple kind of in-context learning.
+1. In a model with multiple layers of attention, this allows information to take multiple hops between tokens, allowing for richer contextual representations and more expressive algorithms. One important algorithm of this type is the [induction head](https://transformer-circuits.pub/2022/in-context-learning-and-induction-heads/index.html), which performs a simple kind of in-context learning.
 2. When *training* a Transformer, next-token probabilities are computed for every position simultaneously and compared to the actual next tokens that appear in the sequence. This is a huge efficiency improvement: when processing a sequence with $$n$$ tokens, this means you get $$n$$ pieces of feedback rather than just one.
+
+<!-- [TODO: say explicitly WHY attention is causally masked: during training, every position predicts its next token simultaneously, so position i must not be allowed to see tokens j > i (it could just read off the answer). This ties reason 2 above to the minus-infinity masking below.] -->
 
 We'll end up writing the attention mechanism somewhat differently this time around, matching the notation you'll see in other sources. But the only real difference is that every token will have its own query vector -- everything else is bookkeeping (figuring out the right way to stack vectors to form matrices).
 
@@ -407,7 +409,7 @@ $$
 
 where $$\text{softmax}^*$$ indicates that you need to replace the upper-triangular portion of the matrix with $$-\infty$$ values to prevent information from flowing in the wrong direction.
 
-We can package our result calculations $$r_i = \sum_{j=1}^n a_{ij} v_j$$ for $$i=1, \dots, n$$ into one matrix-vector product: $$r = vA^\top$$, and then project back to the residual stream via $$o = W_O r$$.
+We can package our result calculations $$r_i = \sum_{j=1}^n a_{ij} v_j$$ for $$i=1, \dots, n$$ into one matrix product: $$r = vA^\top$$, and then project back to the residual stream via $$o = W_O r$$.
 
 ## Multiple heads
 
@@ -415,7 +417,7 @@ Up to this point, I've been acting as if there's a single attention calculation 
 
 There are two equivalent ways to think about how to combine the results of each attention head. The conceptually simpler way, used in the "Transformer Circuits" paper, is to give each attention head its own output matrix $$W_O^{h_i}$$ and add up the outputs of each head: $$x^{(1)} = x^{(0)} + \sum_{i=1}^H o^{h_i}$$. This makes it clear that each head operates independently, and each contributes to the result in exactly the same way.
 
-However, this *isn't* how the orignal paper on Transformers writes the operation or how it's usually implemented. Matrix multiplication is a highly optimized operation, making it more efficient to perform one big matrix multiplication rather than adding up the results of several small matrix multiplications.
+However, this *isn't* how the original paper on Transformers writes the operation or how it's usually implemented. Matrix multiplication is a highly optimized operation, making it more efficient to perform one big matrix multiplication rather than adding up the results of several small matrix multiplications.
 
 Here we let $$r^{h_1}, \dots, r^{h_H}$$ be the results from each attention head, and let
 
@@ -425,6 +427,8 @@ $$
 
 be the vector of size $$d_\text{head} \cdot H = d_\text{model}$$ obtained from stacking them on top of each other.  The overall attention output is then $$o = W_O R$$, where $$W_O$$ is $$d_\text{model} \times d_\text{model}$$. (Note that we're now *enforcing* the identity $$d_\text{head} = d_\text{model} / H$$, whereas this was just a convention from the additive perspective.)
 
+<!-- [TODO: "enforcing" is only true because we declared W_O to be square. In general the concatenated form has W_O of shape d_model x (H * d_head), which does not force d_head = d_model / H either.] -->
+
 Why are these the same? We can split up $$W_O$$ into a block matrix $$[W_O^{h_1} \,\vert\, \dots \,\vert\, W_O^{h_H}]$$, where each block is of shape $$d_\text{model} \times d_\text{head}$$. Then
 
 $$
@@ -433,7 +437,7 @@ $$
 
 Going forward, we'll stick with the "independent and additive" interpretation, following "Transformer Circuits." But it's important to remember that this *isn't* what you'll see in a typical Transformer implementation.
 
-The end-to-end formula for a full layer of attention is therefore
+The end-to-end formula for a full layer of attention (ignoring LayerNorm) is therefore
 
 $$
 x^{(1)} = x^{(0)} + \sum_{h=1}^{H} W_O^h W_V^h\,   x^{(0)} \, \text{softmax}^*\bigg( \frac{(x^{(0)})^\top (W_Q^h)^\top W_K^h x^{(0)}} {\sqrt{d_\text{head}}}\bigg)^\top.
@@ -480,9 +484,9 @@ If attention only moves information around, then we'd guess the MLPs are where n
 
 There's one last component in a Transformer, which I've so far left out because it's not very *conceptually* important. (It is *practically* important! It just doesn't add much to our story of "how information is moving around.")
 
-At a few points, we've seen that it's useful to keep activations "on the same scale" throughout the network. This explains both the $$\sqrt{d_\text{head}}$$ factor and the softmax when computing the attention pattern, for instance. LayerNorm is similar, ensuring that the inputs to each attention and MLP layer are a consistent size.
+At a few points, we've seen that it's useful to keep activations "on the same scale" throughout the network. This explains both the $$\sqrt{d_\text{head}}$$ factor and the softmax when computing the attention pattern, for instance. LayerNorm is similar, ensuring that the inputs to each attention and MLP layer are a consistent size. (There's also one final LayerNorm applied to the residual stream right before the unembedding; you'll see it in the summary table below.)
 
-For each vector $$x_i$$ in the residual stream, we subtract the mean $$\mu(x_i)$$ and divide by the standard deviation $$\sigma(x_i)$$ of the entries. The elements of the resulting vector have mean $$0$$ and variance $$1$$. We then shift and scale to produce a vector whose entries have mean $$\beta$$ and standard deviation $$\gamma$$, where $$\beta, \gamma$$ are learned parameters of size $$d_\text{model}$$, similar to model weights. Each instance of LayerNorm will have its own learned values of $$\beta$$ and $$\gamma$$.
+For each vector $$x_i$$ in the residual stream, we subtract the mean $$\mu(x_i)$$ and divide by the standard deviation $$\sigma(x_i)$$ of the entries. The elements of the resulting vector have mean $$0$$ and variance $$1$$. We then rescale and shift each coordinate individually: coordinate $$j$$ is multiplied by $$\gamma_j$$ and shifted by $$\beta_j$$, where $$\gamma, \beta$$ are learned parameter vectors of size $$d_\text{model}$$. This lets the model restore whatever scale is useful for each coordinate. Each instance of LayerNorm will have its own learned values of $$\beta$$ and $$\gamma$$.
 
 To sum up, the LayerNorm operation is
 
@@ -500,13 +504,13 @@ Empirically, LayerNorm seems to speed up training and might have other performan
 
 ## Summing up
 
-**[TODO: I don't think I ever talk about two layers of attention! I'm not sure quite how, but it seems like I leave this hanging and should address it.]**
+<!-- [TODO: I don't think I ever talk about two layers of attention! I'm not sure quite how, but it seems like I leave this hanging and should address it.] -->
 
 A full Transformer model consists of an embedding, several Transformer blocks, and an unembedding.
 
 Token IDs, encoded as one-hot vectors, are turned into word embeddings. These embedding vectors capture the semantic information present in each individual token.
 
-The embeddings then pass through several Transformer blocks. The attention heads allow each token to ask questions of the preceding tokens. Based on the "answers" to these questions, information from the preceding tokens will flow forward and be incorporated into an updated embedding in the residual stream. In the phrase "The Empire State Building," `Building` will be updated to represent the Empire State Building in particular. In "the thorny red flower," the `flower` token will updated to reflect its redness and thorns. Then comes another LayerNorm and the MLP, which modifies information independently. This adds extra information that is encoded in model parameters but *not* in the context: `Building` could get updated to indicate that it's in New York, and the thorny red `flower` could be updated toward "rose."
+The embeddings then pass through several Transformer blocks. The attention heads allow each token to ask questions of the preceding tokens. Based on the "answers" to these questions, information from the preceding tokens will flow forward and be incorporated into an updated embedding in the residual stream. In the phrase "The Empire State Building," `Building` will be updated to represent the Empire State Building in particular. In "the thorny red flower," the `flower` token will be updated to reflect its redness and thorns. Then comes another LayerNorm and the MLP, which modifies information independently. This adds extra information that is encoded in model parameters but *not* in the context: `Building` could get updated to indicate that it's in New York, and the thorny red `flower` could be updated toward "rose."
 
 Over the course of several Transformer blocks, these word embeddings come to more richly encode information relevant to predicting what token should follow them. After the unembedding layer and a softmax, they reflect a probability distribution over all possible choices of next tokens.
 
@@ -531,14 +535,15 @@ To close, here's an updated version of our earlier chart of Transformer activati
 | MLP hidden layer  | $$z = \text{ReLU}(W_1 x^{(1)}_\text{LN}  + b_1)$$| $$d_\text{mlp} \times n$$ | 
 | MLP output        | $$m = W_2 z + b_2$$                              | $$d_\text{model} \times n$$ |
 | Post-MLP embeddings | $$x^{(2)} = x^{(1)} + m$$                      | $$d_\text{model} \times n$$ |
-| Logits            | $$\ell = W_U x^{(2)}$$                           | $$n_\text{vocab} \times n$$ |
+| LayerNorm (final) | $$x^{(2)}_\text{LN}=\text{LayerNorm}(x^{(2)})$$  | $$d_\text{model} \times n$$ |
+| Logits            | $$\ell = W_U x^{(2)}_\text{LN}$$                 | $$n_\text{vocab} \times n$$ |
 | Probabilities     | $$p = \text{softmax}(\ell)$$                     | $$n_\text{vocab} \times n$$ |
 
 
 | Layer          | Parameter(s)             | Shape                                           |
 |----------------|--------------------------|-------------------------------------------------|
 | Embedding      | $$W_E$$                  | $$d_\text{model} \times n_\text{vocab}$$        |
-| Embedding      | $$W_\text{pos}$$         | $$d_\text{model} \times n$$                     |
+| Embedding      | $$W_\text{pos}$$         | $$d_\text{model} \times n_\text{ctx}$$          |
 | LayerNorm      | $$\gamma, \beta$$        | $$d_\text{model}$$                              |
 | Attention Head | $$W_Q^h, W_K^h, W_V^h$$  | $$d_\text{head} \times d_\text{model}$$         |
 | Attention Head | $$W_O^h$$                | $$d_\text{model} \times d_\text{head}$$         |
@@ -551,13 +556,13 @@ Thanks for reading! Feedback is welcomed on [this Google Doc (equations won't di
 
 # Appendix: Key figures in several LLMs 
 
-| Parameter           | GPT-2 Small (2019) | GPT-2 XL (2019) | GPT-3 (2020) | DeepSeek V3 (2024) |
-|---------------------|-----------|----------|-------------|-------------|
-| **Total Parameters**| 124M      | 1.5B     | 175B        | 671B        |
-| $$d_\text{model}$$  | 768       | 1600     | 12288       | 7168        |
-| $$d_\text{mlp}$$    | 3072      | 6400     | 49152       | 18432       |
-| $$H = n_\text{heads}$$  | 12    | 25       | 96          | 128         |
-| $$d_\text{head}$$   | 64        | 64       | 128         | 56          |
-| $$n_\text{layers}$$ | 12        | 48       | 96          | 61          |
-| $$n_\text{vocab}$$  | 5025      | 50257    | 50257       | 129280      |
-| Context length      | 1024      | 2048     | 2048        | 163840      |
+| Parameter           | GPT-2 Small (2019) | GPT-2 XL (2019) | GPT-3 (2020) |
+|---------------------|-----------|----------|-------------|
+| **Total Parameters**| 124M      | 1.5B     | 175B        |
+| $$d_\text{model}$$  | 768       | 1600     | 12288       |
+| $$d_\text{mlp}$$    | 3072      | 6400     | 49152       |
+| $$H = n_\text{heads}$$  | 12    | 25       | 96          |
+| $$d_\text{head}$$   | 64        | 64       | 128         |
+| $$n_\text{layers}$$ | 12        | 48       | 96          |
+| $$n_\text{vocab}$$  | 50257     | 50257    | 50257       |
+| Context length      | 1024      | 1024     | 2048        |
