@@ -55,7 +55,7 @@ Here's what we know about our model:
 * Inputs: a sequence of tokens $$t_1, \dots, t_n$$. Each token represents roughly one word in a sentence.[^1] 
 * Outputs: a probability distribution over possible next tokens in the sentence.
 
-![A diagram of a probabilistic language model: A blue box containing input text has an arrow pointing to a red box showing a list of words, each with a probability.](tf1-warmup-input-to-probs.png)
+![A diagram of a probabilistic language model: A blue box containing input text has an arrow pointing to a red box showing a list of words, each with a probability.](/assets/images/tf1-warmup-input-to-probs.png)
 
 [^1]: To get a sense for how "tokenization" works, I recommend playing with [Tiktokenizer](https://tiktokenizer.vercel.app/), which illustrates how various language models split text into tokens. For more technical details on tokenization, I recommend [this post](https://christophergs.com/blog/understanding-llm-tokenization).
 
@@ -68,7 +68,7 @@ For example, if you input `"The Empire State Building is in New"`, a good model 
 
 One model that fits this description is a lookup table of **bigram statistics**: for each pair of tokens, this tells you the frequency with which the second follows the first (say, in some large text corpus). If you throw away the information from tokens $$t_1, \dots, t_{n-1}$$ and just use $$t_n$$, this is the best you can do.
 
-![A diagram of a bigram language model. The final token of the input text is used to predict a probability distribution over possible next tokens.](tf1-warmup-bigrams1.png)
+![A diagram of a bigram language model. The final token of the input text is used to predict a probability distribution over possible next tokens.](/assets/images/tf1-warmup-bigrams1.png)
 
 Of course, this is a terrible way to generate text.
 
@@ -94,7 +94,7 @@ To avoid the issues with $$n$$-grams, we’ll add a constraint to our (still hyp
 
 There's no benefit to processing each token independently, in isolation: in that case, you still can't beat bigram statistics. 
 
-![A modified version of the bigram language model diagram above. In this diagram, the model performs additional "processing" on each token. However, the output is still purely a function of the final token, so the behavior is not fundamentally changed.](tf1-warmup-bigrams-with-processing.png)
+![A modified version of the bigram language model diagram above. In this diagram, the model performs additional "processing" on each token. However, the output is still purely a function of the final token, so the behavior is not fundamentally changed.](/assets/images/tf1-warmup-bigrams-with-processing.png)
 
 
 So if we want to do better, we’ll have to *find a way for the other tokens in the context to modify the model's version of $$t_n$$*.
@@ -119,7 +119,7 @@ This is a lot to keep track of for such a simple sentence! But somehow, modern l
 
 Above, I said we want to "find a way for the other tokens in the context to modify the model's version of $$t_n$$." We can rephrase this as: we want to be able to *move information* from earlier tokens to the last token.
 
-![Another modification to the bigram model. Now each input token influences the value of the "processed" version of all subsequent input tokens. As a result, the output is a function of all the input tokens, not just the final token.](tf1-warmup-info-movement-1.png)
+![Another modification to the bigram model. Now each input token influences the value of the "processed" version of all subsequent input tokens. As a result, the output is a function of all the input tokens, not just the final token.](/assets/images/tf1-warmup-info-movement-1.png)
 
 **[TODO: i'm not sure this breakdown of "information movement" is all that helpful -- maybe redo]**
 
@@ -151,7 +151,7 @@ GPT-2 Small, which will be our running reference example, has a vocabulary size 
 
 (This is somewhat non-standard: conventionally, the input matrix will be $$n \times n_\text{vocab}$$ with the tokens as *rows*, not columns. This non-standard choice will simplify some mathematical expressions later on.)
 
-![A diagram illustrating how the input to a Transformer is constructed. Tokens are assigned indices, which are represented by one-hot vectors. The one-hot vectors form the columns of the input matrix.](tf1-zerolayer-input.png)
+![A diagram illustrating how the input to a Transformer is constructed. Tokens are assigned indices, which are represented by one-hot vectors. The one-hot vectors form the columns of the input matrix.](/assets/images/tf1-zerolayer-input.png)
 
 Fifty thousand dimensions  is a lot to work with, so the first thing the model does is **embed** the tokens into a lower-dimensional space of size $$d_{\text{model}}$$. In GPT-2, $$d_{\text{model}} = 768$$.
 
@@ -171,7 +171,7 @@ $$
 x^{(0)} = W_E t + W_\text{pos}.
 $$
 
-![Tokens to embedding: the embedding matrix W_E multiplies the token matrix t, and the positional embedding matrix W_pos is added. The result is x^0.](tf1-zerolayer-full-embedding.png)
+![Tokens to embedding: the embedding matrix W_E multiplies the token matrix t, and the positional embedding matrix W_pos is added. The result is x^0.](/assets/images/tf1-zerolayer-full-embedding.png)
 
 
 ## Unembedding
@@ -195,7 +195,7 @@ $$
 
 The $$k$$-th entry of this output vector is the probability that the model assigns to the token with index $$k$$ appearing next.
 
-![An overview of the "zero layer" Transformer: The input matrix t is embedded to produce x^0. This passes through the unembedding to produce logits, which in turn are processed to produce probabilities.](tf1-zerolayer-overview.png)
+![An overview of the "zero layer" Transformer: The input matrix t is embedded to produce x^0. This passes through the unembedding to produce logits, which in turn are processed to produce probabilities.](/assets/images/tf1-zerolayer-overview.png)
 
 Of course, we still haven't left the "processing tokens individually" stage, so the best we can hope for here is for the model to encode (say it with me) *bigram statistics*. The "Transformer Circuits" paper confirms that this is what the model learns:
 
@@ -219,7 +219,7 @@ T(t) &= \text{softmax}(W_Ux^{(1)}_n) & \text{(unembedding)}
 \end{align*}
 $$
 
-![A modified version of the previous diagram: now, after tokens are embedded, an "attention output" o is produced from x^0. x^0 and o are combined to produce x^1, which is unembedded to produce logits and probabilities. Together, x^0 and x^1 make up the "residual stream."](tf1-onelayersimple-overview.png)
+![A modified version of the previous diagram: now, after tokens are embedded, an "attention output" o is produced from x^0. x^0 and o are combined to produce x^1, which is unembedded to produce logits and probabilities. Together, x^0 and x^1 make up the "residual stream."](/assets/images/tf1-onelayersimple-overview.png)
 
 There are two important things to note about this operation. First, this is a **residual connection**: rather than setting $$x^{(1)} = \text{Attention}(x^{(0)}_1, \dots, x^{(0)}_n)$$ directly, the attention output is *added* to the original embedding $$x^{(0)}_n$$. 
 
@@ -243,7 +243,7 @@ Here’s how “Attention is All You Need” summarizes attention:
 
 Here's a diagram illustrating the attention mechanism, which we'll walk through piece by piece.
 
-![A diagram illustraing the simplified attention mechanism which only updates the last token embedding. Every token has an associated key and value, and the final token has an associated query. The keys combine with the query to compute scores, which result in attention weights after a softmax operation. A weighted sum of the values is computed, using the attention weights. This result is projected back into the residual stream to produce the attention output.](tf1-onelayersimple-attention.png)
+![A diagram illustraing the simplified attention mechanism which only updates the last token embedding. Every token has an associated key and value, and the final token has an associated query. The keys combine with the query to compute scores, which result in attention weights after a softmax operation. A weighted sum of the values is computed, using the attention weights. This result is projected back into the residual stream to produce the attention output.](/assets/images/tf1-onelayersimple-attention.png)
 
 ## Values: what information is being moved?
 
@@ -370,7 +370,7 @@ $$
 [0.269, 0.731]
 $$
 
-We want to pad this with some value $$P$$ so that $$\text{softmax}([1, 2, P]) = [0.269, 0.731, 0]$$. Looking at the softmax formula, this means we want $$e^P = 0$$. The "solution" is to set $$P = -\infty$$. (In practice, you might just use a large negative value.)
+We want to pad this with some value $$P$$ so that $$\text{softmax}([1, 2, P]) = [0.269, 0.731, 0]$$. Looking at the softmax formula, this means we want to find $$P$$ such that $$e^P = 0$$. The "solution" is to set $$P = -\infty$$. (In practice, you might just use a large negative value.)
 
 So our attention score matrix is
 
