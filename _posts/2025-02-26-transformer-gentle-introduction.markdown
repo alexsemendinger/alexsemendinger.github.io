@@ -190,8 +190,10 @@ That is: for any input $$x$$, we can interpret $$\text{softmax}(x)$$ as a probab
 
 Expressed as a function, our zero-layer Transformer is 
 $$
-T([t_1, \dots, t_n]) = T(t_n) = \text{softmax}(W_U x^{(0)}_n) = \text{softmax}\big(W_U(W_Et_n + W_\text{pos}) \big).
+T([t_1, \dots, t_n]) = \text{softmax}(W_U x^{(0)}_n) = \text{softmax}\big(W_U(W_Et_n + [W_\text{pos}]_n) \big),
 $$
+
+where $$[W_\text{pos}]_n$$ is the $$n$$-th column of $$W_\text{pos}$$. Note that the output depends only on the final token $$t_n$$ (and its position $$n$$) -- so the best this model can do is learn (position-adjusted) bigram statistics.
 
 The $$k$$-th entry of this output vector is the probability that the model assigns to the token with index $$k$$ appearing next.
 
