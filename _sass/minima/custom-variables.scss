@@ -1,1 +1,7 @@
 // Placeholder to allow overriding predefined variables smoothly.
+
+// Serif body font (system stack — no external font CDN required).
+$base-font-family: Charter, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, Cambria, "Times New Roman", Times, serif;
+
+// Pure white page background (overrides Minima's off-white #fdfdfd).
+$background-color: #ffffff;
